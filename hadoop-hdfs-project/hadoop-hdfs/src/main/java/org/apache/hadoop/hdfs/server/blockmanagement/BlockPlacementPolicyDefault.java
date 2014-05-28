@@ -554,6 +554,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
       List<DatanodeStorageInfo> results,                           
       boolean avoidStaleNodes,
       StorageType storageType) {
+	LOG.fatal("[placement] testing type-> storage=" + storage + ",type=" + storageType);
     if (isGoodTarget(storage, blockSize, maxNodesPerRack, considerLoad,
         results, avoidStaleNodes, storageType)) {
       results.add(storage);
@@ -599,12 +600,14 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
                                List<DatanodeStorageInfo> results,
                                boolean avoidStaleNodes,
                                StorageType storageType) {
-    if (storage.getStorageType() != storageType) {
+	LOG.fatal("[placement] storage=" + storage + ", type=" + storageType);
+    if (!storageType.equals(StorageType.ANY) && storage.getStorageType() != storageType) {
       logNodeIsNotChosen(storage,
           "storage types do not match, where the expected storage type is "
               + storageType);
       return false;
     }
+    LOG.fatal("[placement] match type-> storage=" + storage + ",type=" + storageType);
     if (storage.getState() == State.READ_ONLY_SHARED) {
       logNodeIsNotChosen(storage, "storage is read-only");
       return false;
@@ -615,6 +618,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
       logNodeIsNotChosen(storage, "the node is (being) decommissioned ");
       return false;
     }
+    LOG.fatal("[placement] match decommission-> storage=" + storage + ",type=" + storageType);
 
     if (avoidStaleNodes) {
       if (node.isStale(this.staleInterval)) {
@@ -623,12 +627,15 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
       }
     }
     
+    LOG.fatal("[placement] match stale -> storage=" + storage + ",type=" + storageType);
+    
     final long requiredSize = blockSize * HdfsConstants.MIN_BLOCKS_FOR_WRITE;
     final long scheduledSize = blockSize * node.getBlocksScheduled();
     if (requiredSize > node.getRemaining() - scheduledSize) {
       logNodeIsNotChosen(storage, "the node does not have enough space ");
       return false;
     }
+    LOG.fatal("[placement] match size -> storage=" + storage + ",type=" + storageType);
 
     // check the communication traffic of the target machine
     if (considerLoad) {
@@ -644,6 +651,8 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
         return false;
       }
     }
+    
+    LOG.fatal("[placement] match load -> storage=" + storage + ",type=" + storageType);
       
     // check if the target rack has chosen too many nodes
     String rackname = node.getNetworkLocation();
@@ -658,6 +667,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
       logNodeIsNotChosen(storage, "the rack has too many chosen nodes ");
       return false;
     }
+    LOG.fatal("[placement] match rack -> storage=" + storage + ",type=" + storageType);
     return true;
   }
     

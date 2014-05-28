@@ -2642,6 +2642,7 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
       throws LeaseExpiredException, NotReplicatedYetException,
       QuotaExceededException, SafeModeException, UnresolvedLinkException,
       IOException {
+	LOG.fatal("Get additional block: src=" + src);
     long blockSize;
     int replication;
     DatanodeDescriptor clientNode = null;
@@ -2683,6 +2684,10 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
     // choose targets for the new block to be allocated.
     final DatanodeStorageInfo targets[] = getBlockManager().chooseTarget( 
         src, replication, clientNode, excludedNodes, blockSize, favoredNodes);
+    LOG.fatal("[namenode] src=" + src + ", num=" + targets.length);
+    for (DatanodeStorageInfo s : targets) {
+    	LOG.fatal("[namenode] target=" + s);
+    }
 
     // Part II.
     // Allocate a new block, add it to the INode and the BlocksMap. 

@@ -830,7 +830,9 @@ public class BlockManager {
       " numCorrupt: " + numCorruptNodes +
       " numCorruptRepls: " + numCorruptReplicas;
     final ExtendedBlock eb = new ExtendedBlock(namesystem.getBlockPoolId(), blk);
-    return new LocatedBlock(eb, machines, pos, isCorrupt);
+    LocatedBlock b = new LocatedBlock(eb, machines, pos, isCorrupt);
+    LOG.fatal("Allocated block: " + b + ", " + blk.getBlockCollection().getName());
+    return b;
   }
 
   /** Create a LocatedBlocks. */
@@ -1425,7 +1427,7 @@ public class BlockManager {
     final DatanodeStorageInfo[] targets = blockplacement.chooseTarget(src,
         numOfReplicas, client, excludedNodes, blocksize, 
         // TODO: get storage type from file
-        favoredDatanodeDescriptors, StorageType.DEFAULT);
+        favoredDatanodeDescriptors, StorageType.ANY);
     if (targets.length < minReplication) {
       throw new IOException("File " + src + " could only be replicated to "
           + targets.length + " nodes instead of minReplication (="

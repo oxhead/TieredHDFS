@@ -278,6 +278,9 @@ public class DataNode extends Configured
     try {
       hostName = getHostName(conf);
       LOG.info("Configured hostname is " + hostName);
+      for (StorageLocation s : dataDirs) {
+    	  LOG.fatal("valid data dir: " + s);
+      }
       startDataNode(conf, dataDirs, resources);
     } catch (IOException ie) {
       shutdown();
@@ -1788,6 +1791,10 @@ public class DataNode extends Configured
       }
 
       locations.add(location);
+    }
+    
+    for (StorageLocation s : locations) {
+    	System.out.println(s.toString());
     }
 
     return locations;
