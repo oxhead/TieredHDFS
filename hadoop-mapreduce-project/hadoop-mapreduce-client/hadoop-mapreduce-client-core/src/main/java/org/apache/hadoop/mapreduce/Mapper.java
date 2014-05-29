@@ -139,9 +139,18 @@ public class Mapper<KEYIN, VALUEIN, KEYOUT, VALUEOUT> {
    * @throws IOException
    */
   public void run(Context context) throws IOException, InterruptedException {
+    boolean hasNext = false;
     setup(context);
     try {
-      while (context.nextKeyValue()) {
+      while (true) {
+        long startTime = System.nanoTime();
+        hasNext = context.nextKeyValue();
+        long endTime = System.nanoTime();
+        long period = endTime - startTime;
+        context.getCounter("my", "map_waiting_time").increment(period);
+        if (!hasNext) {
+          break;
+      }
         map(context.getCurrentKey(), context.getCurrentValue(), context);
       }
     } finally {
