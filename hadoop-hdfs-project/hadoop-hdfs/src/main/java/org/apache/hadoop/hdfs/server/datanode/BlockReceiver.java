@@ -163,6 +163,7 @@ class BlockReceiver implements Closeable {
       //
       if (isDatanode) { //replication or move
         replicaInfo = datanode.data.createTemporary(block);
+        LOG.fatal("[block] create temprary file -> block=" + block + ", replica=" + replicaInfo);
       } else {
         switch (stage) {
         case PIPELINE_SETUP_CREATE:
@@ -717,6 +718,7 @@ class BlockReceiver implements Closeable {
         close();
         block.setNumBytes(replicaInfo.getNumBytes());
 
+        LOG.fatal("[datanode] stage: " + stage);
         if (stage == BlockConstructionStage.TRANSFER_RBW) {
           // for TRANSFER_RBW, convert temporary to RBW
           datanode.data.convertTemporaryToRbw(block);

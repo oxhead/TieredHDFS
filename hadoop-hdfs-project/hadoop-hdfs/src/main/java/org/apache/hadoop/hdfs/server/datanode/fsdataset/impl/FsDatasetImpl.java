@@ -740,6 +740,7 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   @Override // FsDatasetSpi
   public synchronized ReplicaInPipeline createRbw(ExtendedBlock b)
       throws IOException {
+	 LOG.fatal("[fs] creating rwb file: " + b);
     ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), 
         b.getBlockId());
     if (replicaInfo != null) {
@@ -878,6 +879,7 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   @Override // FsDatasetSpi
   public synchronized ReplicaInPipeline createTemporary(ExtendedBlock b)
       throws IOException {
+	LOG.fatal("[fs] creating temporary file: " + b);
     ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), b.getBlockId());
     if (replicaInfo != null) {
       throw new ReplicaAlreadyExistsException("Block " + b +

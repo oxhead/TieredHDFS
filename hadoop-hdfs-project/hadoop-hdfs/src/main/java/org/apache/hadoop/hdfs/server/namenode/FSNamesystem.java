@@ -1409,6 +1409,11 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
     }
   }
 
+  // hack to access private method
+  public NamespaceInfo getNamespaceInfo(int num) {
+	  return getNamespaceInfo();
+  }
+
   /**
    * Version of @see #getNamespaceInfo() that is not protected by a lock.
    */
