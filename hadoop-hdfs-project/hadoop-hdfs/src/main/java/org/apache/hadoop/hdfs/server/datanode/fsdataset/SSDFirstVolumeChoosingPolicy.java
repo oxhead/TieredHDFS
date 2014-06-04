@@ -41,42 +41,45 @@ public class SSDFirstVolumeChoosingPolicy<V extends FsVolumeSpi>
   private static Map<String, Boolean> skipRecord = new HashMap<String, Boolean>();
 
   @Override
-  public synchronized V chooseVolume(final List<V> volumes, final long blockSize
-      ) throws IOException {
-    if(volumes.size() < 1) {
-      throw new DiskOutOfSpaceException("No more available volumes");
-    }
-    
-    
-    List<VolumeRecord> orderedVolumedList = getSortedVolumeList(volumes, blockSize);
-    for (int i = 0; i < orderedVolumedList.size(); i++) {
-    	LOG.fatal("[volume] record[" + i + "]: " + orderedVolumedList.get(i));
-    }
-    
-    // pick SSD first
-    if (orderedVolumedList.size() > 0) {
-    	VolumeRecord selectedVolumn = orderedVolumedList.get(0);
-    	LOG.fatal("[volume] choose volume=" + selectedVolumn.volume + ", accessCount=" + selectedVolumn.accessCount);
-    	incrementAccessCount(selectedVolumn.volume);
-    	return orderedVolumedList.get(0).volume;
-    } 
-
-    List<V> randomVolumeList = new ArrayList<V>(volumes);
-    Collections.shuffle(randomVolumeList);
-    
-    for (V v : randomVolumeList) {
-    	try {
-    		if (v.getAvailable() > 0) {
-    			incrementAccessCount(v);
-    			return v;
-    		}
-    	} catch (Exception e) {
-    		
-    	}
-    }
-    
-    throw new DiskOutOfSpaceException("Out of space: The volume with the most available space is less than the block size (=" + blockSize + " B).");
+  public synchronized V chooseVolume(final List<V> volumes, final long blockSize) throws IOException {
+    return chooseVolume(volumes, blockSize, StorageType.ANY);
   }
+  
+  @Override
+  public synchronized V chooseVolume(final List<V> volumes, final long blockSize, final StorageType storagePreference) throws IOException {
+	  if(volumes.size() < 1) {
+	      throw new DiskOutOfSpaceException("No more available volumes");
+	    }
+	    
+	    List<VolumeRecord> orderedVolumedList = getSortedVolumeList(volumes, blockSize, storagePreference);
+	    for (int i = 0; i < orderedVolumedList.size(); i++) {
+	    	LOG.fatal("[volume] record[" + i + "]: " + orderedVolumedList.get(i));
+	    }
+	    
+	    if (orderedVolumedList.size() > 0) {
+	    	VolumeRecord selectedVolumn = orderedVolumedList.get(0);
+	    	LOG.fatal("[volume] choose volume=" + selectedVolumn.volume + ", accessCount=" + selectedVolumn.accessCount);
+	    	incrementAccessCount(selectedVolumn.volume);
+	    	return orderedVolumedList.get(0).volume;
+	    } 
+
+	    List<V> randomVolumeList = new ArrayList<V>(volumes);
+	    Collections.shuffle(randomVolumeList);
+	    
+	    for (V v : randomVolumeList) {
+	    	try {
+	    		if (v.getAvailable() > 0) {
+	    			incrementAccessCount(v);
+	    			return v;
+	    		}
+	    	} catch (Exception e) {
+	    		
+	    	}
+	    }
+	    
+	    throw new DiskOutOfSpaceException("Out of space: The volume with the most available space is less than the block size (=" + blockSize + " B).");
+  }
+  
   
   public void incrementAccessCount(V v) {
 	  accessRecord.put(v.getStorageID(), accessRecord.get(v.getStorageID()) + 1);
@@ -110,8 +113,8 @@ public class SSDFirstVolumeChoosingPolicy<V extends FsVolumeSpi>
 	  skipRecord.remove(v.getStorageID());
   }
   
-  public List<VolumeRecord> getSortedVolumeList(List<V> volumes, long blockSize) {
-	 List<VolumeRecord> allowedList = new ArrayList<VolumeRecord>();
+  public List<VolumeRecord> getSortedVolumeList(List<V> volumes, long blockSize, StorageType storageType) {
+	  List<VolumeRecord> allowedList = new ArrayList<VolumeRecord>();
 	  for (V v : volumes) {
 		  
 		  long freeSpace = -1;
@@ -123,19 +126,20 @@ public class SSDFirstVolumeChoosingPolicy<V extends FsVolumeSpi>
 		  int accessCount = lookupAccessCount(v);
 		  boolean skipLastTime = lookupSkipRecord(v);
 		  if (freeSpace > blockSize) {
-			  if (skipLastTime || accessCount == 0 || accessCount % this.maxAllocations != 0) {
-				  removeSkipRecord(v);
-				  allowedList.add(new VolumeRecord(v, accessCount, freeSpace)); 
-		      } else {
-		    	  setSkipRecord(v);
-		      }
+			  if (storageType == null || storageType.equals(StorageType.ANY) || (v.getStorageType().equals(storageType))) {
+				  if (skipLastTime || accessCount == 0 || accessCount % this.maxAllocations != 0) {
+					  removeSkipRecord(v);
+					  allowedList.add(new VolumeRecord(v, accessCount, freeSpace)); 
+			      } else {
+			    	  setSkipRecord(v);
+			      }
+			  }
 		  }
 	  }
 	  
 	  Collections.sort(allowedList);
 	  return allowedList;
   }
-  
   class VolumeRecord implements Comparable<VolumeRecord> {
 	V volume;  
 	int accessCount;
@@ -166,4 +170,5 @@ public class SSDFirstVolumeChoosingPolicy<V extends FsVolumeSpi>
 	}
 	  
   }
+
 }

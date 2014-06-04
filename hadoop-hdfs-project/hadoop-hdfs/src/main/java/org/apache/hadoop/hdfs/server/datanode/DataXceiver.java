@@ -47,6 +47,7 @@ import java.util.Arrays;
 import org.apache.commons.logging.Log;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
 import org.apache.hadoop.hdfs.ShortCircuitShm.SlotId;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.net.Peer;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
@@ -562,7 +563,9 @@ class DataXceiver extends Receiver implements Runnable {
       final long maxBytesRcvd,
       final long latestGenerationStamp,
       DataChecksum requestedChecksum,
-      CachingStrategy cachingStrategy) throws IOException {
+      CachingStrategy cachingStrategy,
+      String storageID,
+      StorageType storageTypePreference) throws IOException {
     previousOpClientName = clientname;
     updateCurrentThreadName("Receiving block " + block);
     final boolean isDatanode = clientname.length() == 0;
@@ -623,7 +626,7 @@ class DataXceiver extends Receiver implements Runnable {
             peer.getLocalAddressString(),
             stage, latestGenerationStamp, minBytesRcvd, maxBytesRcvd,
             clientname, srcDataNode, datanode, requestedChecksum,
-            cachingStrategy);
+            cachingStrategy, storageID, storageTypePreference);
         storageUuid = blockReceiver.getStorageUuid();
       } else {
         storageUuid = datanode.data.recoverClose(
@@ -933,9 +936,11 @@ class DataXceiver extends Receiver implements Runnable {
   public void replaceBlock(final ExtendedBlock block,
       final Token<BlockTokenIdentifier> blockToken,
       final String delHint,
-      final DatanodeInfo proxySource) throws IOException {
+      final DatanodeInfo proxySource,
+      final String storageId,
+      final StorageType storageTypeReference) throws IOException {
     updateCurrentThreadName("Replacing block " + block + " from " + delHint);
-
+    LOG.fatal("[datanode] replace block " + block + " -> storageID=" + storageId + ", preference=" + storageTypeReference);
     /* read header */
     block.setNumBytes(dataXceiverServer.estimateBlockSize);
     if (datanode.isBlockTokenEnabled) {
@@ -997,15 +1002,15 @@ class DataXceiver extends Receiver implements Runnable {
           HdfsConstants.SMALL_BUFFER_SIZE));
       proxyReply = new DataInputStream(new BufferedInputStream(unbufProxyIn,
           HdfsConstants.IO_FILE_BUFFER_SIZE));
-
+      LOG.fatal("[*] step 1");
       /* send request to the proxy */
       new Sender(proxyOut).copyBlock(block, blockToken);
-
+      LOG.fatal("[*] step 2");
       // receive the response from the proxy
       
       BlockOpResponseProto copyResponse = BlockOpResponseProto.parseFrom(
           PBHelper.vintPrefixed(proxyReply));
-
+      LOG.fatal("[*] step 3");
       if (copyResponse.getStatus() != SUCCESS) {
         if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
           throw new IOException("Copy block " + block + " from "
@@ -1025,16 +1030,17 @@ class DataXceiver extends Receiver implements Runnable {
           block, proxyReply, proxySock.getRemoteSocketAddress().toString(),
           proxySock.getLocalSocketAddress().toString(),
           null, 0, 0, 0, "", null, datanode, remoteChecksum,
-          CachingStrategy.newDropBehind());
-
+          CachingStrategy.newDropBehind(),
+          storageId, storageTypeReference);
+      LOG.fatal("[*] step 4");
       // receive a block
       blockReceiver.receiveBlock(null, null, null, null, 
           dataXceiverServer.balanceThrottler, null);
-                    
+      LOG.fatal("[*] step 5");
       // notify name node
       datanode.notifyNamenodeReceivedBlock(
           block, delHint, blockReceiver.getStorageUuid());
-
+      LOG.fatal("[*] step 6");
       LOG.info("Moved " + block + " from " + peer.getRemoteAddressString()
           + ", delHint=" + delHint);
       
@@ -1149,4 +1155,5 @@ class DataXceiver extends Receiver implements Runnable {
       }
     }
   }
+
 }

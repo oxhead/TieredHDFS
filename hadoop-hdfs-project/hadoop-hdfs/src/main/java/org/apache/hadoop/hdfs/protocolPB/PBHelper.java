@@ -1596,13 +1596,15 @@ public class PBHelper {
     }
   }
 
-  private static StorageTypeProto convertStorageType(
+  public static StorageTypeProto convertStorageType(
       StorageType type) {
     switch(type) {
     case DISK:
       return StorageTypeProto.DISK;
     case SSD:
       return StorageTypeProto.SSD;
+    case ANY:
+      return StorageTypeProto.ANY;
     default:
       throw new IllegalStateException(
           "BUG: StorageType not found, type=" + type);
@@ -1625,12 +1627,14 @@ public class PBHelper {
     }
   }
 
-  private static StorageType convertType(StorageTypeProto type) {
+  public static StorageType convertType(StorageTypeProto type) {
     switch(type) {
       case DISK:
         return StorageType.DISK;
       case SSD:
         return StorageType.SSD;
+      case ANY:
+        return StorageType.ANY;
       default:
         throw new IllegalStateException(
             "BUG: StorageTypeProto not found, type=" + type);

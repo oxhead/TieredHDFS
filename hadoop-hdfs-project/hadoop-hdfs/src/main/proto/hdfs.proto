@@ -132,6 +132,7 @@ message FsPermissionProto {
  * Types of recognized storage media.
  */
 enum StorageTypeProto {
+  ANY = 0;
   DISK = 1;
   SSD = 2;
 }

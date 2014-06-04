@@ -15,9 +15,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -65,7 +68,8 @@ public class TieredStorageManager {
 	private NameNodeConnector nnc;
 	
 	Random random = new Random();
-
+	
+	private Set<Block> movedSet = new HashSet<Block>();
 	public TieredStorageManager(Configuration conf, BlockManager blockManager, FSNamesystem fsNamesystem) {
 		this.conf = conf;
 		this.blockManager = blockManager;
@@ -82,14 +86,28 @@ public class TieredStorageManager {
 			}
 		}, 60, 15, TimeUnit.SECONDS);
 	}
-	
+
+	public boolean checkBlockExists(DatanodeDescriptor node, List<DatanodeStorageInfo> storageInfos) {
+		for (DatanodeStorageInfo info : storageInfos) {
+			if (info.getDatanodeDescriptor().equals(node)) {
+				return true;
+			}
+		}
+		return false;
+		
+	}
 	public void run() {
 		try {
 			List<DatanodeDescriptor> datanodes = nnc.getDatanodes();
 			if (datanodes.size() < 1) {
 				return;
 			}
-			DatanodeDescriptor datanode = datanodes.get(randInt(datanodes.size()));
+			int ri = randInt(datanodes.size());
+			LOG.fatal("[move] random=" + ri);
+			for (DatanodeDescriptor dd : datanodes) {
+				LOG.fatal("[move] dd=" + dd);
+			}
+			DatanodeDescriptor datanode = datanodes.get(ri);
 			
 			BlockWithLocations[] newBlocks = nnc.getBlocks(datanode);
 			if (newBlocks.length < 1) {
@@ -99,20 +117,33 @@ public class TieredStorageManager {
 			LOG.fatal("[move] pick a datanode -> " + datanode);
 			LOG.fatal("[move] pick a block ->" + block);
 			
+			if (movedSet.contains(block.getBlock())) {
+				LOG.fatal("[move] block " + block + " is already moved");
+				return;
+			}
+			
 			List<DatanodeStorageInfo> dsInfos = nnc.getStorageInfos(block.getBlock());
 			for (DatanodeStorageInfo dsInfo : dsInfos) {
 				DatanodeDescriptor sourceNode = dsInfo.getDatanodeDescriptor();
-				LOG.fatal("[move] block=" + block + ", node=" + sourceNode.getHostName() + ", location=" + dsInfo);
-				if (dsInfo.getStorageType().equals(StorageType.DISK)) {
-					if (datanodes.size() < 2) {
-						LOG.fatal("[move] not enough datanodes");
-						continue;
-					}
-					DatanodeDescriptor destNode = chooseRandomNode(sourceNode, datanodes);
-					LOG.fatal("[move] pick datanode: " + destNode);
-					BlockMove blockMove = new BlockMove(block.getBlock(), sourceNode, destNode, this.nnc);
-					blockMove.run();
+				LOG.fatal("[move] move from block=" + block + ", node=" + sourceNode.getHostName() + ", location=" + dsInfo);
+				StorageType destStorageType = dsInfo.getStorageType().equals(StorageType.SSD) ? StorageType.DISK : StorageType.SSD;
+				  
+				List<DatanodeDescriptor> cadidateNodes = getNodesWithStorage(sourceNode, datanodes, destStorageType);
+				if (cadidateNodes.size() < 2) {
+					LOG.fatal("[move] not enough datanodes to migrate to");
+					continue;
 				}
+				DatanodeDescriptor destNode = cadidateNodes.get(randInt(cadidateNodes.size()));
+				if (dsInfo.getDatanodeDescriptor().equals(destNode)) {
+					LOG.fatal("The block " + block + " is already stored on node " + datanode);
+					continue;
+				}
+				String pickedStorageID = pickStorageID(destNode, destStorageType);
+				LOG.fatal("[move] move to datanode: " + destNode + ", storageype=" + pickedStorageID);
+				BlockMove blockMove = new BlockMove(block.getBlock(), sourceNode, destNode, pickedStorageID, this.nnc);
+				blockMove.run();
+				movedSet.add(block.getBlock());
+				break;
 			}
 			
 			
@@ -137,7 +168,16 @@ public class TieredStorageManager {
 		return start + random.nextInt(end-start);
 	}
 	
-	public DatanodeDescriptor chooseRandomNode(DatanodeDescriptor original, List<DatanodeDescriptor> list) {
+	public String pickStorageID(DatanodeDescriptor node, StorageType storgeType) {
+		for (DatanodeStorageInfo info : node.getStorageInfos()) {
+			if (info.getStorageType().equals(storgeType)) {
+				return info.getStorageID();
+			}
+		}
+		return "";
+	} 
+	
+	public List<DatanodeDescriptor> getNodesWithStorage(DatanodeDescriptor original, List<DatanodeDescriptor> list, StorageType storageType) {
 		List<DatanodeDescriptor> newList = new ArrayList<DatanodeDescriptor>(list);
 		int index = -1;
 		for (int i =0; i < newList.size(); i++) {
@@ -146,10 +186,24 @@ public class TieredStorageManager {
 			}
 		}
 		newList.remove(index);
-		return newList.get(randInt(newList.size()));
-		
-	}
 
+		Iterator<DatanodeDescriptor> iterator = newList.iterator();
+		while (iterator.hasNext()) {
+			DatanodeDescriptor dd = iterator.next();
+			boolean found = false;
+			for (DatanodeStorageInfo info :  dd.getStorageInfos()) {
+				if (info.getStorageType().equals(storageType)) {
+					found = true;
+					continue;
+				}
+			}
+			if (!found) {
+			    iterator.remove();
+			}
+		}
+		return newList;
+	}
+	
 	public void stop() {
 		serviceExecutor.shutdown();
 	}
@@ -226,11 +280,13 @@ class BlockMove implements Runnable{
 	Block block;
 	DatanodeInfo source;
 	DatanodeInfo target;
+	String storageID;
 	NameNodeConnector nameNodeConnector;
-	public BlockMove(Block block, DatanodeInfo source, DatanodeInfo target, NameNodeConnector nameNodeConnector) {
+	public BlockMove(Block block, DatanodeInfo source, DatanodeInfo target, String storageID, NameNodeConnector nameNodeConnector) {
 		this.block = block;
 		this.source = source;
 		this.target = target;
+		this.storageID = storageID;
 		this.nameNodeConnector = nameNodeConnector;
 	}
 	
@@ -238,7 +294,8 @@ class BlockMove implements Runnable{
     private void sendRequest(DataOutputStream out) throws IOException {
       final ExtendedBlock eb = new ExtendedBlock(nameNodeConnector.getBlockPoolId(), this.block);
       final Token<BlockTokenIdentifier> accessToken = nameNodeConnector.getAccessToken(eb);
-      new Sender(out).replaceBlock(eb, accessToken, source.getDatanodeUuid(), this.source);
+      LOG.fatal("[move] move block to " + storageID);
+      new Sender(out).replaceBlock(eb, accessToken, source.getDatanodeUuid(), this.source, storageID, StorageType.ANY);
     }
     
     /* Receive a block copy response from the input stream */ 
@@ -255,7 +312,7 @@ class BlockMove implements Runnable{
 
 	@Override
 	public void run() {
-		LOG.fatal("[move] block=" + this.block + ", src=" + this.source + ", dest=" + this.target);
+		LOG.fatal("[move] run -> block=" + this.block + ", src=" + this.source + ", dest=" + this.target);
 		Socket sock = new Socket();
 	    DataOutputStream out = null;
 	    DataInputStream in = null;
@@ -280,7 +337,9 @@ class BlockMove implements Runnable{
 	      in = new DataInputStream(new BufferedInputStream(unbufIn,
 	          HdfsConstants.IO_FILE_BUFFER_SIZE));
 	      
+	      LOG.fatal("[move] before send");
 	      sendRequest(out);
+	      LOG.fatal("[move] after send");
 	      receiveResponse(in);
 	      LOG.info("Successfully moved " + this);
 	    } catch (IOException e) {

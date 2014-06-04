@@ -107,6 +107,9 @@ message OpWriteBlockProto {
    */
   required ChecksumProto requestedChecksum = 9;
   optional CachingStrategyProto cachingStrategy = 10;
+
+  optional string storageID = 11;
+  optional StorageTypeProto storageTypePreference = 12 [default = ANY];
 }
   
 message OpTransferBlockProto {
@@ -118,6 +121,8 @@ message OpReplaceBlockProto {
   required BaseHeaderProto header = 1;
   required string delHint = 2;
   required DatanodeInfoProto source = 3;
+  optional string storageID = 4;
+  optional StorageTypeProto storageTypePreference = 5 [default = ANY];
 }
 
 message OpCopyBlockProto {

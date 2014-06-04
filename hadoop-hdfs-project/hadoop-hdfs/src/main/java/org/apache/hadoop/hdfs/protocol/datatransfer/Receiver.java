@@ -133,7 +133,9 @@ public abstract class Receiver implements DataTransferProtocol {
         fromProto(proto.getRequestedChecksum()),
         (proto.hasCachingStrategy() ?
             getCachingStrategy(proto.getCachingStrategy()) :
-          CachingStrategy.newDefaultStrategy()));
+          CachingStrategy.newDefaultStrategy()),
+        proto.getStorageID(),
+        PBHelper.convertType(proto.getStorageTypePreference()));
   }
 
   /** Receive {@link Op#TRANSFER_BLOCK} */
@@ -178,7 +180,9 @@ public abstract class Receiver implements DataTransferProtocol {
     replaceBlock(PBHelper.convert(proto.getHeader().getBlock()),
         PBHelper.convert(proto.getHeader().getToken()),
         proto.getDelHint(),
-        PBHelper.convert(proto.getSource()));
+        PBHelper.convert(proto.getSource()),
+        proto.getStorageID(),
+        PBHelper.convertType(proto.getStorageTypePreference()));
   }
 
   /** Receive OP_COPY_BLOCK */

@@ -27,6 +27,7 @@ import java.util.Map;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
 import org.apache.hadoop.hdfs.protocol.BlockLocalPathInfo;
@@ -182,6 +183,12 @@ public interface FsDatasetSpi<V extends FsVolumeSpi> extends FSDatasetMBean {
    */
   public ReplicaInPipelineInterface createTemporary(ExtendedBlock b
       ) throws IOException;
+  
+  public ReplicaInPipelineInterface createTemporary(ExtendedBlock b,
+      StorageType storagePreference) throws IOException;
+  
+  public ReplicaInPipelineInterface createTemporary(ExtendedBlock b,
+	      String storageID) throws IOException;
 
   /**
    * Creates a RBW replica and returns the meta info of the replica
@@ -192,6 +199,12 @@ public interface FsDatasetSpi<V extends FsVolumeSpi> extends FSDatasetMBean {
    */
   public ReplicaInPipelineInterface createRbw(ExtendedBlock b
       ) throws IOException;
+  
+  public ReplicaInPipelineInterface createRbw(ExtendedBlock b,
+      StorageType storagePreference) throws IOException;
+  
+  public ReplicaInPipelineInterface createRbw(ExtendedBlock b,
+	      String storageID) throws IOException;
 
   /**
    * Recovers a RBW replica and returns the meta info of the replica

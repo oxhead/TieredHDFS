@@ -37,6 +37,7 @@ import java.util.zip.Checksum;
 import org.apache.commons.logging.Log;
 import org.apache.hadoop.fs.ChecksumException;
 import org.apache.hadoop.fs.FSOutputSummer;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
@@ -123,12 +124,23 @@ class BlockReceiver implements Closeable {
   private long restartBudget;
 
   BlockReceiver(final ExtendedBlock block, final DataInputStream in,
+	      final String inAddr, final String myAddr,
+	      final BlockConstructionStage stage, 
+	      final long newGs, final long minBytesRcvd, final long maxBytesRcvd, 
+	      final String clientname, final DatanodeInfo srcDataNode,
+	      final DataNode datanode, DataChecksum requestedChecksum,
+	      CachingStrategy cachingStrategy) throws IOException {
+	  this(block, in, inAddr, myAddr, stage, newGs, minBytesRcvd, maxBytesRcvd, clientname, srcDataNode, datanode, requestedChecksum, cachingStrategy, "", StorageType.ANY);
+  }
+	      
+  BlockReceiver(final ExtendedBlock block, final DataInputStream in,
       final String inAddr, final String myAddr,
       final BlockConstructionStage stage, 
       final long newGs, final long minBytesRcvd, final long maxBytesRcvd, 
       final String clientname, final DatanodeInfo srcDataNode,
       final DataNode datanode, DataChecksum requestedChecksum,
-      CachingStrategy cachingStrategy) throws IOException {
+      CachingStrategy cachingStrategy,
+      String storageID, StorageType storagePreference) throws IOException {
     try{
       this.block = block;
       this.in = in;
@@ -162,12 +174,20 @@ class BlockReceiver implements Closeable {
       // Open local disk out
       //
       if (isDatanode) { //replication or move
-        replicaInfo = datanode.data.createTemporary(block);
+    	if (storageID != null && storageID.length() > 0) {
+          replicaInfo = datanode.data.createTemporary(block, storageID);
+    	} else {
+          replicaInfo = datanode.data.createTemporary(block, storagePreference);
+    	}
         LOG.fatal("[block] create temprary file -> block=" + block + ", replica=" + replicaInfo);
       } else {
         switch (stage) {
         case PIPELINE_SETUP_CREATE:
-          replicaInfo = datanode.data.createRbw(block);
+          if (storageID != null && storageID.length() > 0) {
+            replicaInfo = datanode.data.createRbw(block, storageID);
+          } else {
+            replicaInfo = datanode.data.createRbw(block, storagePreference);
+          }
           datanode.notifyNamenodeReceivingBlock(
               block, replicaInfo.getStorageUuid());
           break;
@@ -199,7 +219,11 @@ class BlockReceiver implements Closeable {
         case TRANSFER_RBW:
         case TRANSFER_FINALIZED:
           // this is a transfer destination
-          replicaInfo = datanode.data.createTemporary(block);
+          if (storageID != null && storageID.length() > 0) {
+            replicaInfo = datanode.data.createTemporary(block, storageID);
+          } else {
+            replicaInfo = datanode.data.createTemporary(block, storagePreference);
+          }
           break;
         default: throw new IOException("Unsupported stage " + stage + 
               " while receiving block " + block + " from " + inAddr);
@@ -221,7 +245,7 @@ class BlockReceiver implements Closeable {
       this.needsChecksumTranslation = !clientChecksum.equals(diskChecksum);
       this.bytesPerChecksum = diskChecksum.getBytesPerChecksum();
       this.checksumSize = diskChecksum.getChecksumSize();
-
+      LOG.fatal("[datanode] create replica " + ((ReplicaInfo)replicaInfo).getBlockFile() + " at " + ((ReplicaInfo)replicaInfo).getVolume());
       this.out = streams.getDataOut();
       if (out instanceof FileOutputStream) {
         this.outFd = ((FileOutputStream)out).getFD();
@@ -443,10 +467,12 @@ class BlockReceiver implements Closeable {
    * returns the number of data bytes that the packet has.
    */
   private int receivePacket() throws IOException {
+	LOG.fatal("[Receiver] begin receiving");
     // read the next packet
     packetReceiver.receiveNextPacket(in);
-
+    
     PacketHeader header = packetReceiver.getHeader();
+    LOG.fatal("[Receiver] get header: header");
     if (LOG.isDebugEnabled()){
       LOG.debug("Receiving one packet for block " + block +
                 ": " + header);
@@ -634,6 +660,7 @@ class BlockReceiver implements Closeable {
     if (throttler != null) { // throttle I/O
       throttler.throttle(len);
     }
+    LOG.fatal("[Receiver] end receiving");
     
     return lastPacketInBlock?-1:len;
   }
@@ -699,9 +726,9 @@ class BlockReceiver implements Closeable {
             new PacketResponder(replyOut, mirrIn, downstreams));
         responder.start(); // start thread to processes responses
       }
-
+      LOG.fatal("[Receiver] start to receive packet for block " + this.block + " from " + this.srcDataNode);
       while (receivePacket() >= 0) { /* Receive until the last packet */ }
-
+      LOG.fatal("[Receiver] finish to receive packet for block " + this.block + " from " + this.srcDataNode);
       // wait for all outstanding packet responses. And then
       // indicate responder to gracefully shutdown.
       // Mark that responder has been closed for future processing
@@ -718,7 +745,7 @@ class BlockReceiver implements Closeable {
         close();
         block.setNumBytes(replicaInfo.getNumBytes());
 
-        LOG.fatal("[datanode] stage: " + stage);
+        LOG.fatal("[datanode] stage: " + stage + ", isDatanode: " + isDatanode + ", isTransfer:" + isTransfer);
         if (stage == BlockConstructionStage.TRANSFER_RBW) {
           // for TRANSFER_RBW, convert temporary to RBW
           datanode.data.convertTemporaryToRbw(block);
