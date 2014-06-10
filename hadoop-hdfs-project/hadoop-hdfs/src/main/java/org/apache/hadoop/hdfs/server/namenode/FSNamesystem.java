@@ -508,6 +508,8 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
 
   private final AclConfigFlag aclConfigFlag;
 
+  private Map<ExtendedBlock, Integer> blockAccessRecord = new HashMap<ExtendedBlock, Integer>();
+
   /**
    * Set the last allocated inode id when fsimage or editlog is loaded. 
    */
@@ -1747,6 +1749,12 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
         // Set caching information for the located blocks.
         for (LocatedBlock lb: blocks.getLocatedBlocks()) {
           cacheManager.setCachedLocations(lb);
+        }
+        for (LocatedBlock lb: blocks.getLocatedBlocks()) {
+          ExtendedBlock eb = lb.getBlock();
+          int count = blockAccessRecord.containsKey(eb) ? blockAccessRecord.get(eb) : 0;
+          count = count + 1;
+          blockAccessRecord.put(eb, count);
         }
         return blocks;
       } finally {
@@ -7773,6 +7781,10 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
       }
       logger.addAppender(asyncAppender);        
     }
+  }
+
+  public Map<ExtendedBlock, Integer> getBlockAccessRecord() {
+	  return this.blockAccessRecord;
   }
 
 }

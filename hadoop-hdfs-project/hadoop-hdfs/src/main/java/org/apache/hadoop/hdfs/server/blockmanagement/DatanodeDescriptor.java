@@ -28,10 +28,12 @@ import java.util.Map;
 import java.util.Queue;
 
 import com.google.common.annotations.VisibleForTesting;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -350,6 +352,16 @@ public class DatanodeDescriptor extends DatanodeInfo {
     int blocks = 0;
     for (DatanodeStorageInfo entry : getStorageInfos()) {
       blocks += entry.numBlocks();
+    }
+    return blocks;
+  }
+
+  public int numBlocks(StorageType storageType) {
+    int blocks = 0;
+    for (DatanodeStorageInfo entry : getStorageInfos()) {
+      if (entry.getStorageType().equals(storageType)) {
+        blocks += entry.numBlocks();
+      }
     }
     return blocks;
   }

@@ -731,6 +731,10 @@ public class BlockManager {
     return locations;
   }
   
+  protected List<DatanodeStorageInfo> getLocationInfos(Block block) {
+	  return getValidLocations(block);
+  }
+
   private List<LocatedBlock> createLocatedBlockList(final BlockInfo[] blocks,
       final long offset, final long length, final int nrBlocksToReturn,
       final AccessMode mode) throws IOException {
