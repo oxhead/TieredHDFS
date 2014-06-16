@@ -17,7 +17,7 @@ function deploy() {
 }
 
 echo "Deply Hadoop build files"
-for (( i=64; i<=67; i++ )); do
+for (( i=60; i<=67; i++ )); do
         node="10.113.211.$i"
         deploy $node
 done

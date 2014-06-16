@@ -1,53 +1,36 @@
 package org.apache.hadoop.hdfs.server.blockmanagement;
 
-import static org.apache.hadoop.hdfs.protocolPB.PBHelper.vintPrefixed;
-
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
-import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.DatanodeReportType;
-import org.apache.hadoop.hdfs.protocol.datatransfer.Sender;
-import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.BlockOpResponseProto;
-import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.Status;
+import org.apache.hadoop.hdfs.protocol.Workload;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenSecretManager;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
-import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+import org.apache.hadoop.hdfs.server.blockmanagement.MigrationTask.Type;
 import org.apache.hadoop.hdfs.server.namenode.FSNamesystem;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations.BlockWithLocations;
-import org.apache.hadoop.io.IOUtils;
-import org.apache.hadoop.net.NetUtils;
+import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
 import org.apache.hadoop.security.token.Token;
 
 public class TieredStorageManager {
@@ -57,20 +40,16 @@ public class TieredStorageManager {
 	private ScheduledExecutorService serviceExecutor = Executors.newScheduledThreadPool(1);
 	private Configuration conf;
 
-	private BlockManager blockManager;
-	private FSNamesystem fsNamesystem;
-	private NameNodeConnector nnc;
+	private Context context;
 
-	Random random = new Random();
-
-	private MigrationService migrationService;
+	private WorkloadAnalyzer workloadAnalyzer;
+	private MigrationManager migrationManager;
 
 	public TieredStorageManager(Configuration conf, BlockManager blockManager, FSNamesystem fsNamesystem) {
 		this.conf = conf;
-		this.blockManager = blockManager;
-		this.fsNamesystem = fsNamesystem;
-		this.nnc = new NameNodeConnector(this.fsNamesystem, this.blockManager, conf);
-		this.migrationService = new MigrationService(this.nnc);
+		this.context = new Context(fsNamesystem, blockManager, conf);
+		this.migrationManager = new MigrationManager(this.context);
+		this.workloadAnalyzer = new WorkloadAnalyzer(this.context);
 	}
 
 	public void start() {
@@ -84,449 +63,302 @@ public class TieredStorageManager {
 		}, 60, 15, TimeUnit.SECONDS);
 	}
 
-	public boolean checkBlockExists(DatanodeDescriptor node, List<DatanodeStorageInfo> storageInfos) {
-		for (DatanodeStorageInfo info : storageInfos) {
-			if (info.getDatanodeDescriptor().equals(node)) {
-				return true;
-			}
-		}
-		return false;
-
-	}
-
-	// calculate data size in SSD
-	private boolean requireMigration() {
-		int totalBlocks = 0;
-		for (DatanodeDescriptor dd : this.nnc.getDatanodes()) {
-			totalBlocks += dd.numBlocks(StorageType.SSD);
-		}
-		// 64MB * 16 = 1GB
-		return totalBlocks > 16;
-	}
-
-	private void removeAccessRecord(ExtendedBlock block) {
-		fsNamesystem.getBlockAccessRecord().remove(block);
-	}
-
-	public TreeSet<BlockAccessRecord> getLeaseUsedBlocks() {
-		Map<ExtendedBlock, Integer> accessRecords = fsNamesystem.getBlockAccessRecord();
-		TreeSet<BlockAccessRecord> records = new TreeSet<BlockAccessRecord>();
-		for (Map.Entry<ExtendedBlock, Integer> entry : accessRecords.entrySet()) {
-			BlockAccessRecord record = new BlockAccessRecord(entry.getKey(), entry.getValue());
-			records.add(record);
-		}
-		return records;
-	}
-
-	public DatanodeDescriptor pickOneNode(List<DatanodeDescriptor> nodes, List<DatanodeStorageInfo> excludeStorages) {
-		List<DatanodeDescriptor> validNodes = new LinkedList<DatanodeDescriptor>(nodes);
-		for (DatanodeStorageInfo dsInfo : excludeStorages) {
-			validNodes.remove(dsInfo.getDatanodeDescriptor());
-		}
-		if (validNodes.size() < 1) {
-			return null;
-		}
-		return validNodes.get(randInt(validNodes.size()));
-	}
-
-	private DatanodeStorageInfo pickOneStorage(DatanodeDescriptor sourceNode, StorageType storageType) {
-		List<DatanodeStorageInfo> dsInfos = new LinkedList<DatanodeStorageInfo>();
-		for (DatanodeStorageInfo info : sourceNode.getStorageInfos()) {
-			if (info.getStorageType().equals(storageType)) {
-				dsInfos.add(info);
-			}
-		}
-		if (dsInfos.size() < 1) {
-			return null;
-		}
-		return dsInfos.get(randInt(dsInfos.size()));
-	}
-
-	public void run() {
-		LOG.fatal("Manager thread runs");
-		try {
-			if (!requireMigration()) {
-				LOG.fatal("Doesn't require migration");
-				return;
-			}
-
-			List<DatanodeDescriptor> datanodes = nnc.getDatanodes();
-			if (datanodes.size() < 1) {
-				LOG.fatal("No datanodes available");
-				return;
-			}
-
-			LOG.fatal("[Tier] start evaluating");
-			// consider only SSD blocks
-			TreeSet<BlockAccessRecord> leastUsedBlocks = getLeaseUsedBlocks();
-
-			int maxMigrateBlocks = (int) (0.1 * leastUsedBlocks.size());
-			int migrateBlocks = 0;
-			LOG.fatal("[Tier] max migrated blocks=" + maxMigrateBlocks);
-
-			Iterator<BlockAccessRecord> iterator = leastUsedBlocks.iterator();
-			while (migrateBlocks < maxMigrateBlocks && iterator.hasNext()) {
-				BlockAccessRecord blockRecord = iterator.next();
-				LOG.fatal("[Tier] LRU=" + blockRecord);
-				if (migrationService.isMigrating(blockRecord.block.getLocalBlock())) {
-					LOG.fatal("[Tier] block is already migrating: " + blockRecord);
-					continue;
-				}
-				Block block = blockRecord.block.getLocalBlock();
-				// get all block locations
-				List<DatanodeStorageInfo> locations = nnc.getLocationInfos(block);
-				for (DatanodeStorageInfo dsInfo : locations) {
-					// choose only the SSD block. We have only one replication.
-					// Should'd be a problem.
-					if (dsInfo.getStorageType().equals(StorageType.SSD)) {
-						// source
-						DatanodeDescriptor sourceNode = dsInfo.getDatanodeDescriptor();
-
-						// dest + storage
-						// need to check null
-						DatanodeDescriptor destNode = pickOneNode(datanodes, locations);
-						DatanodeStorageInfo storage = pickOneStorage(destNode, StorageType.DISK);
-
-						removeAccessRecord(blockRecord.block);
-						migrateBlocks = migrateBlocks + 1;
-						migrationService.addTask(block, sourceNode, destNode, storage);
-					}
-				}
-			}
-
-		} catch (Exception ex) {
-			LOG.fatal("[move] unable to complete task", ex);
-		}
-
-	}
-
-	public void printArray(Object[] array) {
-		for (Object o : array) {
-			LOG.fatal("\t" + o);
-		}
-	}
-
-	public int randInt(int len) {
-		return randInt(0, len);
-	}
-
-	public int randInt(int start, int end) {
-		return start + random.nextInt(end - start);
-	}
-
-	public String pickStorageID(DatanodeDescriptor node, StorageType storgeType) {
-		for (DatanodeStorageInfo info : node.getStorageInfos()) {
-			if (info.getStorageType().equals(storgeType)) {
-				return info.getStorageID();
-			}
-		}
-		return "";
-	}
-
-	public List<DatanodeDescriptor> getNodesWithStorage(DatanodeDescriptor original, List<DatanodeDescriptor> list, StorageType storageType) {
-		List<DatanodeDescriptor> newList = new ArrayList<DatanodeDescriptor>(list);
-		int index = -1;
-		for (int i = 0; i < newList.size(); i++) {
-			if (newList.get(i).getHostName().equals(original.getHostName())) {
-				index = i;
-			}
-		}
-		newList.remove(index);
-
-		Iterator<DatanodeDescriptor> iterator = newList.iterator();
-		while (iterator.hasNext()) {
-			DatanodeDescriptor dd = iterator.next();
-			boolean found = false;
-			for (DatanodeStorageInfo info : dd.getStorageInfos()) {
-				if (info.getStorageType().equals(storageType)) {
-					found = true;
-					continue;
-				}
-			}
-			if (!found) {
-				iterator.remove();
-			}
-		}
-		return newList;
-	}
-
 	public void stop() {
 		serviceExecutor.shutdown();
 	}
 
+	/**
+	 * receive workload report from nodes
+	 *
+	 * @param workloads
+	 */
+	public void workloadReport(DatanodeRegistration nodeReg, List<Workload> workloads) {
+		DatanodeDescriptor node = context.namenode.lookupDataNode(nodeReg.getDatanodeUuid());
+		if (node == null) {
+			LOG.fatal("[Tier] Unknown node record=" + nodeReg);
+			return;
+		}
+
+		LOG.fatal("[Tier] workload report node=" + node.getHostName() + ", size=" + workloads.size());
+		this.workloadAnalyzer.addRecord(node, workloads);
+	}
+
+	/**
+	 * Two steps: 1) calculate whether to migration 2) hand to migration manager
+	 */
+	public void run() {
+		LOG.fatal("[Tier] start runing migration thread");
+		MigrationAlgorithm algorithm = new BalanceMigrationAlgorithm(this.context, this.workloadAnalyzer, this.migrationManager);
+		LOG.fatal("[Tier] algorithm is evaluating");
+		long startTime = System.currentTimeMillis();
+		algorithm.evaluate();
+		long period = System.currentTimeMillis() - startTime;
+		LOG.fatal("[Tier] algorithm execution time=" + period);
+		if (!algorithm.needsMigrations()) {
+			LOG.fatal("[Tier] no need to migrate");
+			return;
+		}
+
+		LOG.fatal("[Tier] adding migration tasks");
+		Collection<MigrationTask> migrationTasks = algorithm.getTasks();
+		this.migrationManager.addTasks(migrationTasks);
+	}
+
 }
 
-class NameNodeConnector {
-	private Log LOG = LogFactory.getLog(NameNodeConnector.class);
+class Context {
+	private Log LOG = LogFactory.getLog(Context.class);
 
 	private FSNamesystem fsNamesystem;
 	private BlockManager blockManager;
-	private BlockTokenSecretManager blockTokenSecretManager;
-	private boolean isBlockTokenEnabled;
 	private Configuration conf;
-	private String blockPoolID;
 
-	public NameNodeConnector(FSNamesystem fsNamesystem, BlockManager blockManager, Configuration conf) {
+	// exposed interface
+	public NameNodeConext namenode;
+	public BlockConext block;
+
+	public Context(FSNamesystem fsNamesystem, BlockManager blockManager, Configuration conf) {
 		this.fsNamesystem = fsNamesystem;
 		this.blockManager = blockManager;
 		this.conf = conf;
-		this.blockPoolID = fsNamesystem.getNamespaceInfo(0).getBlockPoolID();
-		final ExportedBlockKeys keys = this.blockManager.getBlockKeys();
-		this.isBlockTokenEnabled = keys.isBlockTokenEnabled();
-		if (this.isBlockTokenEnabled) {
-			long blockKeyUpdateInterval = keys.getKeyUpdateInterval();
-			long blockTokenLifetime = keys.getTokenLifetime();
-			LOG.info("Block token params received from NN: keyUpdateInterval=" + blockKeyUpdateInterval / (60 * 1000) + " min(s), tokenLifetime=" + blockTokenLifetime / (60 * 1000) + " min(s)");
-			String encryptionAlgorithm = conf.get(DFSConfigKeys.DFS_DATA_ENCRYPTION_ALGORITHM_KEY);
-			this.blockTokenSecretManager = new BlockTokenSecretManager(blockKeyUpdateInterval, blockTokenLifetime, this.blockPoolID, encryptionAlgorithm);
-		}
+		this.namenode = new NameNodeConext();
+		this.block = new BlockConext();
+		namenode.init();
+		block.init();
 	}
 
-	public List<DatanodeDescriptor> getDatanodes() {
-		return blockManager.getDatanodeManager().getDatanodeListForReport(DatanodeReportType.LIVE);
-	}
+	public class NameNodeConext {
+		private BlockTokenSecretManager blockTokenSecretManager;
+		private boolean isBlockTokenEnabled;
 
-	public BlockWithLocations[] getBlocks(DatanodeInfo datanode) throws IOException {
-		return blockManager.getBlocks(datanode, 1024).getBlocks();
-	}
-
-	public BlockWithLocations[] getBlocks(DatanodeInfo datanode, long size) throws IOException {
-		return blockManager.getBlocks(datanode, size).getBlocks();
-	}
-
-	public List<DatanodeStorageInfo> getLocationInfos(Block block) {
-		return blockManager.getLocationInfos(block);
-	}
-
-	public List<DatanodeStorageInfo> getStorageInfos(Block block) {
-		Iterable<DatanodeStorageInfo> iterator = blockManager.getStorages(block);
-		List<DatanodeStorageInfo> list = new ArrayList<DatanodeStorageInfo>();
-		for (DatanodeStorageInfo ds : iterator) {
-			list.add(ds);
-		}
-		return list;
-	}
-
-	public Token<BlockTokenIdentifier> getAccessToken(ExtendedBlock eb) throws IOException {
-		if (!isBlockTokenEnabled) {
-			return BlockTokenSecretManager.DUMMY_TOKEN;
-		} else {
-			return blockTokenSecretManager.generateToken(null, eb, EnumSet.of(BlockTokenSecretManager.AccessMode.REPLACE, BlockTokenSecretManager.AccessMode.COPY));
-		}
-	}
-
-	public String getBlockPoolId() {
-		return this.blockPoolID;
-	}
-}
-
-class BlockMove implements Runnable {
-	static final Log LOG = LogFactory.getLog(BlockMove.class);
-	public static final int BLOCK_MOVE_READ_TIMEOUT = 20 * 60 * 1000; // 20
-																		// minutes
-	Block block;
-	DatanodeDescriptor source;
-	DatanodeDescriptor target;
-	DatanodeStorageInfo storage;
-	NameNodeConnector nameNodeConnector;
-
-	public BlockMove(Block block, DatanodeDescriptor source, DatanodeDescriptor target, DatanodeStorageInfo storage, NameNodeConnector nameNodeConnector) {
-		this.block = block;
-		this.source = source;
-		this.target = target;
-		this.storage = storage;
-		this.nameNodeConnector = nameNodeConnector;
-	}
-
-	/* Send a block replace request to the output stream */
-	private void sendRequest(DataOutputStream out) throws IOException {
-		final ExtendedBlock eb = new ExtendedBlock(nameNodeConnector.getBlockPoolId(), this.block);
-		final Token<BlockTokenIdentifier> accessToken = nameNodeConnector.getAccessToken(eb);
-		LOG.fatal("[move] move block to " + storage.getStorageID());
-		new Sender(out).replaceBlock(eb, accessToken, source.getDatanodeUuid(), this.source, storage.getStorageID(), StorageType.ANY);
-	}
-
-	/* Receive a block copy response from the input stream */
-	private void receiveResponse(DataInputStream in) throws IOException {
-		BlockOpResponseProto response = BlockOpResponseProto.parseFrom(vintPrefixed(in));
-		if (response.getStatus() != Status.SUCCESS) {
-			if (response.getStatus() == Status.ERROR_ACCESS_TOKEN)
-				throw new IOException("block move failed due to access token error");
-			throw new IOException("block move is failed: " + response.getMessage());
-		}
-	}
-
-	@Override
-	public void run() {
-		LOG.fatal("[move] run -> block=" + this.block + ", src=" + this.source + ", dest=" + this.target);
-		Socket sock = new Socket();
-		DataOutputStream out = null;
-		DataInputStream in = null;
-		try {
-			sock.connect(NetUtils.createSocketAddr(target.getXferAddr()), HdfsServerConstants.READ_TIMEOUT);
-			/*
-			 * Unfortunately we don't have a good way to know if the Datanode is
-			 * taking a really long time to move a block, OR something has gone
-			 * wrong and it's never going to finish. To deal with this scenario,
-			 * we set a long timeout (20 minutes) to avoid hanging the balancer
-			 * indefinitely.
-			 */
-			sock.setSoTimeout(BLOCK_MOVE_READ_TIMEOUT);
-
-			sock.setKeepAlive(true);
-
-			OutputStream unbufOut = sock.getOutputStream();
-			InputStream unbufIn = sock.getInputStream();
-			out = new DataOutputStream(new BufferedOutputStream(unbufOut, HdfsConstants.IO_FILE_BUFFER_SIZE));
-			in = new DataInputStream(new BufferedInputStream(unbufIn, HdfsConstants.IO_FILE_BUFFER_SIZE));
-
-			LOG.fatal("[move] before send");
-			sendRequest(out);
-			LOG.fatal("[move] after send");
-			receiveResponse(in);
-			LOG.info("Successfully moved " + this);
-		} catch (IOException e) {
-			LOG.warn("Failed to move " + this + ": " + e.getMessage());
-			/*
-			 * proxy or target may have an issue, insert a small delay before
-			 * using these nodes further. This avoids a potential storm of
-			 * "threads quota exceeded" Warnings when the balancer gets out of
-			 * sync with work going on in datanode.
-			 */
-		} finally {
-			IOUtils.closeStream(out);
-			IOUtils.closeStream(in);
-			IOUtils.closeSocket(sock);
-		}
-	}
-}
-
-class BlockAccessRecord implements Comparable<BlockAccessRecord> {
-	ExtendedBlock block;
-	int accessTimes;
-
-	public BlockAccessRecord(ExtendedBlock block, int accessTimes) {
-		this.block = block;
-		this.accessTimes = accessTimes;
-	}
-
-	@Override
-	public int compareTo(BlockAccessRecord arg0) {
-		return Integer.valueOf(this.accessTimes).compareTo(Integer.valueOf(arg0.accessTimes));
-	}
-
-	@Override
-	public String toString() {
-		return "BlockAccessRecord [block=" + block + ", accessTimes=" + accessTimes + "]";
-	}
-
-}
-
-class MigrationService {
-
-	static final Log LOG = LogFactory.getLog(TieredStorageManager.class);
-
-	private NameNodeConnector nnc;
-	private Set<Block> migratingBlocks = new HashSet<Block>();
-
-	private BlockingQueue<TimedBlockMove> taskQueue = new LinkedBlockingQueue<TimedBlockMove>();
-	private MigrationStatistics statistics = new MigrationStatistics();
-
-	public MigrationService(NameNodeConnector nnc) {
-		this.nnc = nnc;
-		for (int i = 0; i < 5; i++) {
-			MigrationWorker worker = new MigrationWorker(this, statistics);
-			worker.run();
-		}
-	}
-
-	public boolean isMigrating(Block block) {
-		return migratingBlocks.contains(block);
-	}
-
-	public synchronized void addTask(Block block, DatanodeDescriptor sourceNode, DatanodeDescriptor destNode, DatanodeStorageInfo storage) {
-		LOG.fatal("[Migrator] add migration task: block=" + block + ", src=" + sourceNode.getHostName() + ", dest=" + destNode.getHostName() + ", storage=" + storage);
-		TimedBlockMove blockMove = new TimedBlockMove(block, sourceNode, destNode, storage, this.nnc);
-		taskQueue.add(blockMove);
-		migratingBlocks.add(block);
-	}
-
-	public TimedBlockMove takeTask() throws InterruptedException {
-		TimedBlockMove task = taskQueue.take();
-		return task;
-	}
-
-	public void completTask(TimedBlockMove task) {
-		migratingBlocks.remove(task.block);
-	}
-
-	class TimedBlockMove extends BlockMove {
-		private long elapsedTime;
-
-		public TimedBlockMove(Block block, DatanodeDescriptor source, DatanodeDescriptor target, DatanodeStorageInfo storage, NameNodeConnector nameNodeConnector) {
-			super(block, source, target, storage, nameNodeConnector);
+		public void init() {
+			final ExportedBlockKeys keys = blockManager.getBlockKeys();
+			this.isBlockTokenEnabled = keys.isBlockTokenEnabled();
+			if (this.isBlockTokenEnabled) {
+				long blockKeyUpdateInterval = keys.getKeyUpdateInterval();
+				long blockTokenLifetime = keys.getTokenLifetime();
+				LOG.info("Block token params received from NN: keyUpdateInterval=" + blockKeyUpdateInterval / (60 * 1000) + " min(s), tokenLifetime=" + blockTokenLifetime / (60 * 1000) + " min(s)");
+				String encryptionAlgorithm = conf.get(DFSConfigKeys.DFS_DATA_ENCRYPTION_ALGORITHM_KEY);
+				this.blockTokenSecretManager = new BlockTokenSecretManager(blockKeyUpdateInterval, blockTokenLifetime, this.getBlockPoolId(), encryptionAlgorithm);
+			}
 		}
 
-		@Override
-		public void run() {
-			long startTime = System.currentTimeMillis();
-			super.run();
-			elapsedTime = System.currentTimeMillis() - startTime;
+		public List<DatanodeDescriptor> getDatanodes() {
+			return blockManager.getDatanodeManager().getDatanodeListForReport(DatanodeReportType.LIVE);
 		}
 
-		public long getElapsedTime() {
-			return elapsedTime;
+		public BlockWithLocations[] getBlocks(DatanodeInfo datanode) throws IOException {
+			return blockManager.getBlocks(datanode, 1024).getBlocks();
 		}
 
-	}
+		public BlockWithLocations[] getBlocks(DatanodeInfo datanode, long size) throws IOException {
+			return blockManager.getBlocks(datanode, size).getBlocks();
+		}
 
-	class MigrationStatistics {
-		private DescriptiveStatistics statiscits = new DescriptiveStatistics();
+		public List<DatanodeStorageInfo> getLocationInfos(Block block) {
+			return blockManager.getLocationInfos(block);
+		}
 
-		public boolean shouldDelay(TimedBlockMove blockMove) {
-			double elapseTime = blockMove.getElapsedTime() / 1000000d;
-			boolean delay = true;
-			if (statiscits.getN() == 0) {
-				delay = true;
+		public String getBlockPoolId() {
+			return fsNamesystem.getNamespaceInfo(0).getBlockPoolID();
+		}
+
+		public Token<BlockTokenIdentifier> getAccessToken(ExtendedBlock eb) throws IOException {
+			if (!isBlockTokenEnabled) {
+				return BlockTokenSecretManager.DUMMY_TOKEN;
 			} else {
-				if (blockMove.elapsedTime > statiscits.getMean() + 2 * statiscits.getStandardDeviation()) {
-					delay = false;
-				} else {
-					delay = true;
+				return blockTokenSecretManager.generateToken(null, eb, EnumSet.of(BlockTokenSecretManager.AccessMode.REPLACE, BlockTokenSecretManager.AccessMode.COPY));
+			}
+		}
+
+		public DatanodeDescriptor lookupDataNode(String uuid) {
+			for (DatanodeDescriptor node : getDatanodes()) {
+				if (node.getDatanodeUuid().equals(uuid)) {
+					return node;
 				}
 			}
-			statiscits.addValue(elapseTime);
-			return delay;
+			return null;
+		}
+
+		public DatanodeStorageInfo pickStorage(DatanodeDescriptor node, StorageType type) {
+			List<DatanodeStorageInfo> dsInfos = new LinkedList<DatanodeStorageInfo>();
+			for (DatanodeStorageInfo dsInfo : node.getStorageInfos()) {
+				if (dsInfo.getStorageType().equals(type)) {
+					dsInfos.add(dsInfo);
+				}
+			}
+			Collections.shuffle(dsInfos);
+			if (dsInfos.size() > 0) {
+				return dsInfos.get(0);
+			}
+			return null;
 		}
 	}
 
-	class MigrationWorker extends Thread {
-		final Log LOG = LogFactory.getLog(MigrationWorker.class);
-
-		private MigrationService service;
-		private MigrationStatistics statistics;
-
-		public MigrationWorker(MigrationService service, MigrationStatistics statistics) {
-			this.service = service;
-			this.statistics = statistics;
+	public class BlockConext {
+		public void init() {
 		}
 
-		@Override
-		public void run() {
-			while (true) {
-				try {
-					TimedBlockMove blockMove = service.takeTask();
-					blockMove.run();
-					service.completTask(blockMove);
-					if (statistics.shouldDelay(blockMove)) {
-						Thread.sleep(1000);
-					}
-				} catch (Exception e) {
-					LOG.fatal("Unable to complet migration task", e);
+		public BlockInfo convert(Block block) {
+			return blockManager.getStoredBlock(block);
+		}
+
+		public List<DatanodeStorageInfo> getStorageInfos(Block block) {
+			Iterable<DatanodeStorageInfo> iterator = blockManager.getStorages(block);
+			List<DatanodeStorageInfo> list = new ArrayList<DatanodeStorageInfo>();
+			for (DatanodeStorageInfo ds : iterator) {
+				list.add(ds);
+			}
+			return list;
+		}
+	}
+}
+
+abstract class MigrationAlgorithm {
+	protected Context context;
+	protected WorkloadAnalyzer workloadAnalyzer;
+	protected Collection<MigrationTask> tasks = new ArrayList<MigrationTask>();
+	protected MigrationManager migrationManager;
+
+	public MigrationAlgorithm(Context context, WorkloadAnalyzer workloadAnalyzer, MigrationManager migrationManager) {
+		this.context = context;
+		this.workloadAnalyzer = workloadAnalyzer;
+		this.migrationManager = migrationManager;
+	}
+
+	public abstract void evaluate();
+
+	public boolean needsMigrations() {
+		return this.tasks.size() > 0;
+	}
+
+	public Collection<MigrationTask> getTasks() {
+		return this.tasks;
+	}
+}
+
+class BalanceMigrationAlgorithm extends MigrationAlgorithm {
+
+	static final Log LOG = LogFactory.getLog(BalanceMigrationAlgorithm.class);
+
+	private double boundary = 0.005;
+
+	public BalanceMigrationAlgorithm(Context context, WorkloadAnalyzer workloadAnalyzer, MigrationManager migrationManager) {
+		super(context, workloadAnalyzer, migrationManager);
+	}
+
+	private long calculateTotalSpace(DatanodeStorageInfo[] dsInfos) {
+		long capacity = 0L;
+		for (DatanodeStorageInfo dsInfo : dsInfos) {
+			capacity += dsInfo.getCapacity();
+		}
+		return capacity;
+	}
+
+	private long calculateUsedSpace(DatanodeStorageInfo[] dsInfos) {
+		long used = 0L;
+		for (DatanodeStorageInfo dsInfo : dsInfos) {
+			used += dsInfo.getDfsUsed();
+		}
+		return used;
+	}
+
+	private double calculateUsedPercentage(DatanodeStorageInfo[] dsInfos) {
+		return (double)calculateUsedSpace(dsInfos) / calculateTotalSpace(dsInfos);
+	}
+
+	@Override
+	public void evaluate() {
+
+		this.tasks.clear();
+		List<DatanodeDescriptor> nodes = context.namenode.getDatanodes();
+
+		// order nodes by space used, small to large
+
+		List<DatanodeDescriptor> overUtilizedNodes = new LinkedList<DatanodeDescriptor>();
+		for (DatanodeDescriptor node : nodes) {
+			double usedPercent = calculateUsedPercentage(node.getStorageInfos(StorageType.SSD));
+			LOG.fatal("[Algorithn] usedPercent=" + usedPercent
+					               + ", used=" + calculateUsedSpace(node.getStorageInfos(StorageType.SSD))
+					               + ", total=" + calculateTotalSpace(node.getStorageInfos(StorageType.SSD))
+					               + ", boundary=" + this.boundary
+					               + ", overall=" + node.getDfsUsed());
+			if (usedPercent > this.boundary) {
+				LOG.fatal("[Algorithm] over utilized datanode: " + node + ", capacity=" + node.getCapacity() + ", used" + node.getDfsUsed() + ", percentage=" + node.getDfsUsedPercent());
+				overUtilizedNodes.add(node);
+			}
+
+		}
+
+		if (overUtilizedNodes.size() == 0) {
+			LOG.fatal("[Algorithm] no over utilized nodes");
+			return;
+		}
+
+		for (DatanodeDescriptor overUtilizedNode : overUtilizedNodes) {
+			LOG.fatal("[Algorithm] processing over utilized node: " + overUtilizedNode);
+			Iterator<BlockInfo> blocks = overUtilizedNode.getBlockIterator(StorageType.SSD);
+			TreeSet<BlockAccessRecord> orderedBlocks = new TreeSet<BlockAccessRecord>(new BlockAccessCountComparator());
+			while (blocks.hasNext()) {
+				BlockInfo blockInfo = blocks.next();
+				int accessCount = this.workloadAnalyzer.getAccessCount(overUtilizedNode, blockInfo);
+				BlockAccessRecord record = new BlockAccessRecord(blockInfo, accessCount);
+				orderedBlocks.add(record);
+			}
+
+			LOG.fatal("[Algorithm] sorted block access record ");
+
+			Iterator<BlockAccessRecord> iterator = orderedBlocks.iterator();
+			long usedSpace = calculateUsedSpace(overUtilizedNode.getStorageInfos(StorageType.SSD));
+			long targetSpace = (long) (calculateTotalSpace(overUtilizedNode.getStorageInfos(StorageType.SSD)) * this.boundary);
+			long currentMigrationSize = this.migrationManager.getTotalMigrationSize(overUtilizedNode);
+			long featureMigrationSize = 0L;
+			LOG.fatal("[Algorithm] usedSpace=" + usedSpace);
+			LOG.fatal("[Algorithm] targetSpace=" + usedSpace);
+			LOG.fatal("[Algorithm] currentMigrationSize=" + usedSpace);
+			while (iterator.hasNext() && (usedSpace - currentMigrationSize - featureMigrationSize) > targetSpace) {
+				BlockAccessRecord record = iterator.next();
+				DatanodeStorageInfo storage = context.namenode.pickStorage(overUtilizedNode, StorageType.DISK);
+				if (storage != null) {
+					MigrationTask task = new MigrationTask(record.block, overUtilizedNode, overUtilizedNode, storage, Type.NORMAL);
+					tasks.add(task);
+					featureMigrationSize += record.block.getNumBytes();
+					LOG.fatal("[Algorithm] featureMigrationSize=" + usedSpace);
+				} else {
+					LOG.fatal("[Algorithm] no DISK storage available");
 				}
 			}
 		}
 
+	}
+
+	class BlockAccessRecord {
+		public Block block;
+		public int accessCount;
+
+		public BlockAccessRecord(Block block, int accessCount) {
+			this.block = block;
+			this.accessCount = accessCount;
+		}
+	}
+
+	class NodeUtilizationComparator implements Comparator<DatanodeDescriptor> {
+		@Override
+		public int compare(DatanodeDescriptor o1, DatanodeDescriptor o2) {
+			return Long.valueOf(o1.getDfsUsed()).compareTo(Long.valueOf(o2.getDfsUsed()));
+		}
+	}
+
+	class BlockAccessCountComparator implements Comparator<BlockAccessRecord> {
+
+		@Override
+		public int compare(BlockAccessRecord o1, BlockAccessRecord o2) {
+			int c1 = Integer.valueOf(o1.accessCount).compareTo(o2.accessCount);
+			if (c1 == 0) {
+				return Long.valueOf(o1.block.getGenerationStamp()).compareTo(o2.block.getGenerationStamp());
+			}
+			return c1;
+		}
 	}
 
 }

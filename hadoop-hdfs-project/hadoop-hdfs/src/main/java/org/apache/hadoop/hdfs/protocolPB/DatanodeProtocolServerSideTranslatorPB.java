@@ -19,11 +19,13 @@
 package org.apache.hadoop.hdfs.protocolPB;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeStatus;
+import org.apache.hadoop.hdfs.protocol.Workload;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReceivedAndDeletedRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReceivedAndDeletedResponseProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReportRequestProto;
@@ -43,10 +45,13 @@ import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.ReportBadBlo
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.ReportBadBlocksResponseProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageBlockReportProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageReceivedDeletedBlocksProto;
+import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.WorkloadReportRequestProto;
+import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.WorkloadReportResponseProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.DatanodeIDProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.LocatedBlockProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.VersionRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.VersionResponseProto;
+import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.WorkloadProto;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
@@ -76,6 +81,9 @@ public class DatanodeProtocolServerSideTranslatorPB implements
   private static final CommitBlockSynchronizationResponseProto 
       VOID_COMMIT_BLOCK_SYNCHRONIZATION_RESPONSE_PROTO =
           CommitBlockSynchronizationResponseProto.newBuilder().build();
+  private static final WorkloadReportResponseProto
+      VOID_WORKLOAD_REPORT_RESPONSE =
+          WorkloadReportResponseProto.newBuilder().build();
 
   public DatanodeProtocolServerSideTranslatorPB(DatanodeProtocol impl) {
     this.impl = impl;
@@ -274,5 +282,22 @@ public class DatanodeProtocolServerSideTranslatorPB implements
       throw new ServiceException(e);
     }
     return VOID_COMMIT_BLOCK_SYNCHRONIZATION_RESPONSE_PROTO;
+  }
+
+  @Override
+  public WorkloadReportResponseProto workloadReport(RpcController controller,
+      WorkloadReportRequestProto request) throws ServiceException {
+    List<WorkloadProto> workloadProtos = request.getWorkloadsList();
+    List<Workload> workloads = new ArrayList<Workload>(workloadProtos.size());
+    for (WorkloadProto proto : workloadProtos) {
+      workloads.add(PBHelper.convert(proto));
+    }
+
+    try {
+      impl.workloadReport(PBHelper.convert(request.getRegistartion()), workloads);
+    } catch (IOException e) {
+      throw new ServiceException(e);
+    }
+    return VOID_WORKLOAD_REPORT_RESPONSE;
   }
 }

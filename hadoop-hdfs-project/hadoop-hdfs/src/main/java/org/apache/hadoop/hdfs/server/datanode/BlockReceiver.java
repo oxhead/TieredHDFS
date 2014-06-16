@@ -467,12 +467,10 @@ class BlockReceiver implements Closeable {
    * returns the number of data bytes that the packet has.
    */
   private int receivePacket() throws IOException {
-	LOG.fatal("[Receiver] begin receiving");
     // read the next packet
     packetReceiver.receiveNextPacket(in);
     
     PacketHeader header = packetReceiver.getHeader();
-    LOG.fatal("[Receiver] get header: header");
     if (LOG.isDebugEnabled()){
       LOG.debug("Receiving one packet for block " + block +
                 ": " + header);
@@ -660,7 +658,6 @@ class BlockReceiver implements Closeable {
     if (throttler != null) { // throttle I/O
       throttler.throttle(len);
     }
-    LOG.fatal("[Receiver] end receiving");
     
     return lastPacketInBlock?-1:len;
   }

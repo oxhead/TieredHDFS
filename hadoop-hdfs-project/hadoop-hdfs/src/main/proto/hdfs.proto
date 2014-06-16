@@ -481,3 +481,8 @@ message SnapshotInfoProto {
 message RollingUpgradeStatusProto {
   required string blockPoolId = 1;
 }
+
+message WorkloadProto {
+	required ExtendedBlockProto block = 1;
+	required int32 accessCount = 2 [default = 0];
+}

@@ -549,6 +549,9 @@ class DataXceiver extends Receiver implements Runnable {
     //update metrics
     datanode.metrics.addReadBlockOp(elapsed());
     datanode.metrics.incrReadsFromClient(peer.isLocal());
+
+    //workload collector
+    WorkloadCollector.reportReadOperation(block);
   }
 
   @Override
@@ -1002,10 +1005,17 @@ class DataXceiver extends Receiver implements Runnable {
           HdfsConstants.SMALL_BUFFER_SIZE));
       proxyReply = new DataInputStream(new BufferedInputStream(unbufProxyIn,
           HdfsConstants.IO_FILE_BUFFER_SIZE));
-      LOG.fatal("[*] step 1");
+
+      LOG.fatal("[datanode] src=" + proxySource + ", dest=" + this.datanode.getDatanodeInfo());
+      if (proxySource.getDatanodeUuid().equals(datanode.getDatanodeUuid())) {
+        LOG.fatal("[datanode] migrate locally");
+        datanode.data.move(block, storageId);
+        LOG.fatal("[datanode] migrate local finish");
+        datanode.notifyNamenodeReceivedBlock(block, delHint, storageId);
+      } else {
+        LOG.fatal("[datanode] migrate remotely");
       /* send request to the proxy */
       new Sender(proxyOut).copyBlock(block, blockToken);
-      LOG.fatal("[*] step 2");
       // receive the response from the proxy
       
       BlockOpResponseProto copyResponse = BlockOpResponseProto.parseFrom(
@@ -1025,6 +1035,7 @@ class DataXceiver extends Receiver implements Runnable {
       ReadOpChecksumInfoProto checksumInfo = copyResponse.getReadOpChecksumInfo();
       DataChecksum remoteChecksum = DataTransferProtoUtil.fromProto(
           checksumInfo.getChecksum());
+
       // open a block receiver and check if the block does not exist
       blockReceiver = new BlockReceiver(
           block, proxyReply, proxySock.getRemoteSocketAddress().toString(),
@@ -1032,18 +1043,15 @@ class DataXceiver extends Receiver implements Runnable {
           null, 0, 0, 0, "", null, datanode, remoteChecksum,
           CachingStrategy.newDropBehind(),
           storageId, storageTypeReference);
-      LOG.fatal("[*] step 4");
       // receive a block
       blockReceiver.receiveBlock(null, null, null, null, 
           dataXceiverServer.balanceThrottler, null);
-      LOG.fatal("[*] step 5");
       // notify name node
       datanode.notifyNamenodeReceivedBlock(
           block, delHint, blockReceiver.getStorageUuid());
-      LOG.fatal("[*] step 6");
       LOG.info("Moved " + block + " from " + peer.getRemoteAddressString()
           + ", delHint=" + delHint);
-      
+      }
     } catch (IOException ioe) {
       opStatus = ERROR;
       errMsg = "opReplaceBlock " + block + " received exception " + ioe; 

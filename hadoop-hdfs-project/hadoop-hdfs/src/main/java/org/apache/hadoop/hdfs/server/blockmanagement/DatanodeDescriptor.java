@@ -262,6 +262,18 @@ public class DatanodeDescriptor extends DatanodeInfo {
       return storages.toArray(new DatanodeStorageInfo[storages.size()]);
     }
   }
+  DatanodeStorageInfo[] getStorageInfos(StorageType storageType) {
+    synchronized (storageMap) {
+      final Collection<DatanodeStorageInfo> storages = storageMap.values();
+      List<DatanodeStorageInfo> pickedStorages = new LinkedList<DatanodeStorageInfo>();
+      for (DatanodeStorageInfo dsInfo : storages) {
+        if (dsInfo.getStorageType().equals(storageType)) {
+          pickedStorages.add(dsInfo);
+        }
+      }
+      return pickedStorages.toArray(new DatanodeStorageInfo[pickedStorages.size()]);
+    }
+  }
 
   boolean hasStaleStorages() {
     synchronized (storageMap) {
@@ -439,6 +451,9 @@ public class DatanodeDescriptor extends DatanodeInfo {
   }
   Iterator<BlockInfo> getBlockIterator(final String storageID) {
     return new BlockIterator(getStorageInfo(storageID));
+  }
+  Iterator<BlockInfo> getBlockIterator(StorageType storageType) {
+	return new BlockIterator(getStorageInfos(storageType));
   }
 
   /**

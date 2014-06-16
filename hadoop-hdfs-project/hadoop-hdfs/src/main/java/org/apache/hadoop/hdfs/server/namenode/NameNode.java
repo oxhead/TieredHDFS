@@ -276,7 +276,7 @@ public class NameNode implements NameNodeStatusMXBean {
    */
   private String tokenServiceName;
 
-  private TieredStorageManager tieredStorageManager;
+  protected TieredStorageManager tieredStorageManager;
 
   /** Format a new filesystem.  Destroys any filesystem that may already
    * exist at this location.  **/

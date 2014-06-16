@@ -43,6 +43,8 @@ import org.apache.hadoop.util.DiskChecker.DiskOutOfSpaceException;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.Time;
 
+import com.google.common.io.Files;
+
 import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectName;
 import javax.management.StandardMBean;
@@ -1968,6 +1970,29 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
       dir = volumes.get(0).getPath(bpid);
     }
     return new RollingLogsImpl(dir, prefix);
+  }
+
+  @Override
+  public void move(ExtendedBlock block, String storageID) throws IOException {
+    ReplicaInfo replica = fetchReplicaInfo(block.getBlockPoolId(), block.getBlockId()); 
+    LOG.fatal("[dataset] replica to move: " + replica);
+    volumeMap.remove(block.getBlockPoolId(), block.getLocalBlock());
+
+    ReplicaInPipeline tempReplica = createTemporary(block, storageID);
+    copyReplica(replica, tempReplica);
+    finalizeBlock(block);
+
+    if (replica.getBlockFile() != null && replica.getBlockFile().exists()) {
+      replica.getBlockFile().delete();
+    }
+    if (replica.getMetaFile() != null && replica.getMetaFile().exists()) {
+      replica.getMetaFile().delete();
+    }
+  }
+
+  private void copyReplica(ReplicaInfo src, ReplicaInfo dest) throws IOException {
+	Files.copy(src.getBlockFile(), dest.getBlockFile());
+	Files.copy(src.getMetaFile(), dest.getMetaFile());
   }
 
 }

@@ -35,6 +35,7 @@ import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeStatus;
+import org.apache.hadoop.hdfs.protocol.Workload;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReceivedAndDeletedRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReportRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReportResponseProto;
@@ -50,6 +51,7 @@ import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.RegisterData
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.ReportBadBlocksRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageBlockReportProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageReceivedDeletedBlocksProto;
+import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.WorkloadReportRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.VersionRequestProto;
 import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
@@ -332,5 +334,23 @@ public class DatanodeProtocolClientSideTranslatorPB implements
     return RpcClientUtil.isMethodSupported(rpcProxy, DatanodeProtocolPB.class,
         RPC.RpcKind.RPC_PROTOCOL_BUFFER,
         RPC.getProtocolVersion(DatanodeProtocolPB.class), methodName);
+  }
+
+  @Override
+  public void workloadReport(DatanodeRegistration registration,
+      List<Workload> workloads) throws IOException {
+    WorkloadReportRequestProto.Builder builder =
+        WorkloadReportRequestProto.newBuilder()
+	.setRegistartion(PBHelper.convert(registration));
+
+    for (Workload workload : workloads) {
+      builder.addWorkloads(PBHelper.convert(workload));
+    }
+
+    try {
+      rpcProxy.workloadReport(NULL_CONTROLLER, builder.build());
+    } catch (ServiceException se) {
+      throw ProtobufHelper.getRemoteException(se);
+    }
   }
 }
