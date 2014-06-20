@@ -301,9 +301,13 @@ class BalanceMigrationAlgorithm extends MigrationAlgorithm {
 			TreeSet<BlockAccessRecord> orderedBlocks = new TreeSet<BlockAccessRecord>(new BlockAccessCountComparator());
 			while (blocks.hasNext()) {
 				BlockInfo blockInfo = blocks.next();
-				int accessCount = this.workloadAnalyzer.getAccessCount(overUtilizedNode, blockInfo);
-				BlockAccessRecord record = new BlockAccessRecord(blockInfo, accessCount);
-				orderedBlocks.add(record);
+				if (!this.migrationManager.isMigrating(overUtilizedNode, blockInfo)) {
+					int accessCount = this.workloadAnalyzer.getAccessCount(overUtilizedNode, blockInfo);
+					BlockAccessRecord record = new BlockAccessRecord(blockInfo, accessCount);
+					orderedBlocks.add(record);
+				} else {
+					LOG.fatal("[Algorithm] block is already being migrated: " + blockInfo);
+				}
 			}
 
 			LOG.fatal("[Algorithm] sorted block access record ");
@@ -323,7 +327,7 @@ class BalanceMigrationAlgorithm extends MigrationAlgorithm {
 					MigrationTask task = new MigrationTask(record.block, overUtilizedNode, overUtilizedNode, storage, Type.NORMAL);
 					tasks.add(task);
 					featureMigrationSize += record.block.getNumBytes();
-					LOG.fatal("[Algorithm] featureMigrationSize=" + usedSpace);
+					LOG.fatal("[Algorithm] featureMigrationSize=" + featureMigrationSize);
 				} else {
 					LOG.fatal("[Algorithm] no DISK storage available");
 				}

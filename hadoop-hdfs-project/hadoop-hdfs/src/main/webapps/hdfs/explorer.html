@@ -117,6 +117,13 @@
           {/locations}
         </ul>
       </p>
+      <p>Details:
+        <ul>
+          {#storedLocations}
+          <li>[{storageType}] {storageID} - {nodeHost}</li>
+          {/storedLocations}
+        </ul>
+      </p>
     </script>
     <script type="text/javascript" src="/static/jquery-1.10.2.min.js">
     </script><script type="text/javascript" src="/static/bootstrap-3.0.2/js/bootstrap.min.js">
