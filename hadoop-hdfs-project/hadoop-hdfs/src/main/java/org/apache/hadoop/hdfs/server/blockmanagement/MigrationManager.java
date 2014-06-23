@@ -217,7 +217,7 @@ class BlockMove {
 	private void sendRequest(DataOutputStream out) throws IOException {
 		final ExtendedBlock eb = new ExtendedBlock(context.namenode.getBlockPoolId(), this.block);
 		final Token<BlockTokenIdentifier> accessToken = context.namenode.getAccessToken(eb);
-		LOG.fatal("[move] move block to node=" + this.target.getHostName() + ", storage="+ storage.getStorageID());
+		LOG.fatal("[move] move block to node=" + this.target.getHostName() + ", storage="+ storage.getStorageID() + ", hint=" + source.getDatanodeUuid());
 		new Sender(out).replaceBlock(eb, accessToken, source.getDatanodeUuid(), this.source, storage.getStorageID(), StorageType.ANY);
 	}
 
@@ -249,6 +249,7 @@ class BlockMove {
 			sendRequest(out);
 			receiveResponse(in);
 			LOG.fatal("[Move] completed: " + this);
+			//this.context.namenode.removeBlock(block);
 		} catch (Exception e) {
 			LOG.fatal("[Move] failed: " + this);
 			throw new IOException("Unable to complete move task: " + this, e);

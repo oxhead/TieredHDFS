@@ -278,6 +278,9 @@ class BPServiceActor implements Runnable {
         if (perStorageMap.getBlockInfoCount() > 0) {
           // Send newly-received and deleted blockids to namenode
           ReceivedDeletedBlockInfo[] rdbi = perStorageMap.dequeueBlockInfos();
+          for (ReceivedDeletedBlockInfo r : rdbi) {
+            LOG.fatal("[bp] actually report block=" + r.getBlock() + ", storage=" + storage);
+          }
           reports.add(new StorageReceivedDeletedBlocks(storage, rdbi));
         }
       }
@@ -941,6 +944,7 @@ class BPServiceActor implements Runnable {
      * @param blockInfo
      */
     void putBlockInfo(ReceivedDeletedBlockInfo blockInfo) {
+      LOG.fatal("[bp] put block=" + blockInfo);
       pendingIncrementalBR.put(blockInfo.getBlock().getBlockId(), blockInfo);
     }
 

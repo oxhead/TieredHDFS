@@ -1973,7 +1973,7 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   }
 
   @Override
-  public void move(ExtendedBlock block, String storageID) throws IOException {
+  public String move(ExtendedBlock block, String storageID) throws IOException {
     ReplicaInfo replica = fetchReplicaInfo(block.getBlockPoolId(), block.getBlockId()); 
     LOG.fatal("[dataset] replica to move: " + replica);
     volumeMap.remove(block.getBlockPoolId(), block.getLocalBlock());
@@ -1988,6 +1988,7 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
     if (replica.getMetaFile() != null && replica.getMetaFile().exists()) {
       replica.getMetaFile().delete();
     }
+    return replica.getStorageUuid();
   }
 
   private void copyReplica(ReplicaInfo src, ReplicaInfo dest) throws IOException {

@@ -19,6 +19,8 @@ package org.apache.hadoop.hdfs.server.blockmanagement;
 
 import java.util.Iterator;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
 import org.apache.hadoop.util.GSet;
@@ -34,6 +36,7 @@ import com.google.common.collect.Iterables;
  * the datanodes that store the block.
  */
 class BlocksMap {
+	static final Log LOG = LogFactory.getLog(BlocksMap.class);
   private static class StorageIterator implements Iterator<DatanodeStorageInfo> {
     private final BlockInfo blockInfo;
     private int nextIdx = 0;
@@ -186,7 +189,7 @@ class BlocksMap {
 
     // remove block from the data-node list and the node from the block info
     boolean removed = node.removeBlock(info);
-
+    LOG.fatal("[map] remove block=" + info + ", result=" + removed);
     if (info.getDatanode(0) == null     // no datanodes left
               && info.getBlockCollection() == null) {  // does not belong to a file
       blocks.remove(b);  // remove block from the map

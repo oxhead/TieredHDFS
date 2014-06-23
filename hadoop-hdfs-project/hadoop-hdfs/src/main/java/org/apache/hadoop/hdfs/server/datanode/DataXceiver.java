@@ -504,7 +504,11 @@ class DataXceiver extends Receiver implements Runnable {
       // send op status
       writeSuccessWithChecksumInfo(blockSender, new DataOutputStream(getOutputStream()));
 
+      long startTime = System.currentTimeMillis();
       long read = blockSender.sendBlock(out, baseStream, null); // send data
+      long elapsedTime = System.currentTimeMillis() - startTime;
+      //workload collector
+      WorkloadCollector.reportReadOperation(block, blockOffset, length, clientName, remoteAddress, elapsedTime);
 
       if (blockSender.didSendEntireByteRange()) {
         // If we sent the entire range, then we should expect the client
@@ -549,9 +553,6 @@ class DataXceiver extends Receiver implements Runnable {
     //update metrics
     datanode.metrics.addReadBlockOp(elapsed());
     datanode.metrics.incrReadsFromClient(peer.isLocal());
-
-    //workload collector
-    WorkloadCollector.reportReadOperation(block);
   }
 
   @Override
@@ -1006,12 +1007,14 @@ class DataXceiver extends Receiver implements Runnable {
       proxyReply = new DataInputStream(new BufferedInputStream(unbufProxyIn,
           HdfsConstants.IO_FILE_BUFFER_SIZE));
 
-      LOG.fatal("[datanode] src=" + proxySource + ", dest=" + this.datanode.getDatanodeInfo());
+      LOG.fatal("[datanode] src=" + proxySource + ", dest=" + this.datanode.getDatanodeInfo() + ", delHint=" + delHint);
       if (proxySource.getDatanodeUuid().equals(datanode.getDatanodeUuid())) {
         LOG.fatal("[datanode] migrate locally");
-        datanode.data.move(block, storageId);
-        LOG.fatal("[datanode] migrate local finish");
+        String oldStorageID = datanode.data.move(block, storageId);
+        LOG.fatal("[data] notify namenode about the deleted block, hint=" + delHint + ", oldStorage=" + oldStorageID);
         datanode.notifyNamenodeReceivedBlock(block, delHint, storageId);
+        //datanode.notifyNamenodeDeletedBlock(block, oldStorageID);
+        LOG.fatal("[datanode] migrate local finish");
       } else {
         LOG.fatal("[datanode] migrate remotely");
       /* send request to the proxy */
@@ -1020,7 +1023,6 @@ class DataXceiver extends Receiver implements Runnable {
       
       BlockOpResponseProto copyResponse = BlockOpResponseProto.parseFrom(
           PBHelper.vintPrefixed(proxyReply));
-      LOG.fatal("[*] step 3");
       if (copyResponse.getStatus() != SUCCESS) {
         if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
           throw new IOException("Copy block " + block + " from "

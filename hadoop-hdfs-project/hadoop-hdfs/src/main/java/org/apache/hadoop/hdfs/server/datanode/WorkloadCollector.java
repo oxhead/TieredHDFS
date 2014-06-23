@@ -17,7 +17,7 @@ public class WorkloadCollector {
 	private static Map<ExtendedBlock, Integer> accessRecords = new HashMap<ExtendedBlock, Integer>();
 	private static boolean enable = false;
 
-	public static void reportReadOperation(ExtendedBlock block) {
+	public static void reportReadOperation(ExtendedBlock block, long blockOffset, long length, String clientName, String remoteAddress, long elapsedTime) {
 		if (enable) {
 			LOG.fatal("[Collector] record one read operation: " + block);
 			int count = accessRecords.containsKey(block) ? accessRecords.get(block) : 0;

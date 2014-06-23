@@ -193,6 +193,7 @@ class BPOfferService {
         delHint);
 
     for (BPServiceActor actor : bpServices) {
+      LOG.fatal("[offer] notify for block=" + bInfo);
       actor.notifyNamenodeBlockImmediately(bInfo, storageUuid);
     }
   }

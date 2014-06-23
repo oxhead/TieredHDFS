@@ -193,6 +193,10 @@ class Context {
 			}
 			return null;
 		}
+
+		public void removeBlock(Block block) {
+			blockManager.removeBlock(block);
+		}
 	}
 
 	public class BlockConext {

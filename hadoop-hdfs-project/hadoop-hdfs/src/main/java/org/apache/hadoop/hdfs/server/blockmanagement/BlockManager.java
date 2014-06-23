@@ -2224,6 +2224,27 @@ public class BlockManager {
     }
   }
 
+  private void replaceStoredBlock(final Block block,
+          DatanodeDescriptor node,
+          String storageID) {
+	BlockInfo oldBlockInfo = blocksMap.getStoredBlock(block);
+	int oldStorageIndex = oldBlockInfo.findStorageInfo(node);
+	if (oldStorageIndex >= 0) {
+	  LOG.fatal("[BM] found old storage");
+	  DatanodeStorageInfo oldStorageInfo = oldBlockInfo.getStorageInfo(oldStorageIndex);
+      DatanodeStorageInfo newStorageInfo = node.getStorageInfo(storageID);
+	  oldBlockInfo.removeStorage(oldStorageInfo);
+	  oldBlockInfo.addStorage(newStorageInfo);
+	  LOG.fatal("[BM] old storage=" + oldStorageInfo + ", new storage=" + newStorageInfo);
+	  Iterator<DatanodeStorageInfo> dsInfos = blocksMap.getStorages(block).iterator();
+	  for ( ;dsInfos.hasNext(); ) {
+		LOG.fatal("[BM] x=" + dsInfos.next());
+	  }
+	} else {
+	  LOG.fatal("[BM] old storage doest not exist");
+	}
+  }
+
   /**
    * Modify (block-->datanode) map. Remove block from set of
    * needed replications if this takes care of the problem.
@@ -2255,7 +2276,6 @@ public class BlockManager {
     assert storedBlock != null : "Block must be stored by now";
     BlockCollection bc = storedBlock.getBlockCollection();
     assert bc != null : "Block must belong to a file";
-
     // add block to the datanode
     boolean added = node.addBlock(storageID, storedBlock);
 
@@ -2726,6 +2746,7 @@ public class BlockManager {
     }
     assert (namesystem.hasWriteLock());
     {
+      blocksMap.removeBlock(block);
       if (!blocksMap.removeNode(block, node)) {
         if(blockLog.isDebugEnabled()) {
           blockLog.debug("BLOCK* removeStoredBlock: "
@@ -2811,13 +2832,20 @@ public class BlockManager {
             + " is expected to be removed from an unrecorded node " + delHint);
       }
     }
-
+    LOG.fatal("[BM] delHint=" + delHintNode + ", block=" + block + ", storage=" + storageID);
+    // hack to replace storage on the same node
+    if (node.equals(delHintNode)) {
+      LOG.fatal("[BM] replace storage=" + storageID + ", block=" + block);
+      replaceStoredBlock(block, node, storageID);
+    } else {
+      LOG.fatal("[BM] normal adding block");
     //
     // Modify the blocks->datanode map and node's map.
     //
     pendingReplications.decrement(block, node);
     processAndHandleReportedBlock(node, storageID, block, ReplicaState.FINALIZED,
         delHintNode);
+    }
   }
   
   private void processAndHandleReportedBlock(DatanodeDescriptor node,
@@ -2892,6 +2920,7 @@ public class BlockManager {
     }
 
     for (ReceivedDeletedBlockInfo rdbi : srdb.getBlocks()) {
+      LOG.fatal("[blockmanager] recieve report block=" + rdbi);
       switch (rdbi.getStatus()) {
       case DELETED_BLOCK:
         removeStoredBlock(rdbi.getBlock(), node);
