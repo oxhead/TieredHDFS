@@ -80,7 +80,7 @@ public class TieredStorageManager {
 		}
 
 		LOG.fatal("[Tier] workload report node=" + node.getHostName() + ", size=" + workloads.size());
-		this.workloadAnalyzer.addRecord(node, workloads);
+		this.workloadAnalyzer.addRecords(node, workloads);
 	}
 
 	/**

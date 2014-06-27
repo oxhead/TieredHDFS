@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -52,7 +54,9 @@ import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.ReportBadBlo
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageBlockReportProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageReceivedDeletedBlocksProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.WorkloadReportRequestProto;
+import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.WorkloadReportResponseProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.VersionRequestProto;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicy;
 import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
@@ -87,7 +91,7 @@ import com.google.protobuf.ServiceException;
 @InterfaceStability.Stable
 public class DatanodeProtocolClientSideTranslatorPB implements
     ProtocolMetaInterface, DatanodeProtocol, Closeable {
-  
+	static final Log LOG = LogFactory.getLog(DatanodeProtocolClientSideTranslatorPB.class);
   /** RpcController is not used and hence is set to null */
   private final DatanodeProtocolPB rpcProxy;
   private static final VersionRequestProto VOID_VERSION_REQUEST = 
@@ -342,13 +346,13 @@ public class DatanodeProtocolClientSideTranslatorPB implements
     WorkloadReportRequestProto.Builder builder =
         WorkloadReportRequestProto.newBuilder()
 	.setRegistartion(PBHelper.convert(registration));
-
+    
     for (Workload workload : workloads) {
       builder.addWorkloads(PBHelper.convert(workload));
     }
 
     try {
-      rpcProxy.workloadReport(NULL_CONTROLLER, builder.build());
+      WorkloadReportResponseProto r = rpcProxy.workloadReport(NULL_CONTROLLER, builder.build());
     } catch (ServiceException se) {
       throw ProtobufHelper.getRemoteException(se);
     }

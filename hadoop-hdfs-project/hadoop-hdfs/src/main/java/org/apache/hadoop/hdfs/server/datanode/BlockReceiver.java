@@ -179,7 +179,6 @@ class BlockReceiver implements Closeable {
     	} else {
           replicaInfo = datanode.data.createTemporary(block, storagePreference);
     	}
-        LOG.fatal("[block] create temprary file -> block=" + block + ", replica=" + replicaInfo);
       } else {
         switch (stage) {
         case PIPELINE_SETUP_CREATE:
@@ -245,7 +244,6 @@ class BlockReceiver implements Closeable {
       this.needsChecksumTranslation = !clientChecksum.equals(diskChecksum);
       this.bytesPerChecksum = diskChecksum.getBytesPerChecksum();
       this.checksumSize = diskChecksum.getChecksumSize();
-      LOG.fatal("[datanode] create replica " + ((ReplicaInfo)replicaInfo).getBlockFile() + " at " + ((ReplicaInfo)replicaInfo).getVolume());
       this.out = streams.getDataOut();
       if (out instanceof FileOutputStream) {
         this.outFd = ((FileOutputStream)out).getFD();
@@ -723,9 +721,7 @@ class BlockReceiver implements Closeable {
             new PacketResponder(replyOut, mirrIn, downstreams));
         responder.start(); // start thread to processes responses
       }
-      LOG.fatal("[Receiver] start to receive packet for block " + this.block + " from " + this.srcDataNode);
       while (receivePacket() >= 0) { /* Receive until the last packet */ }
-      LOG.fatal("[Receiver] finish to receive packet for block " + this.block + " from " + this.srcDataNode);
       // wait for all outstanding packet responses. And then
       // indicate responder to gracefully shutdown.
       // Mark that responder has been closed for future processing
@@ -742,7 +738,6 @@ class BlockReceiver implements Closeable {
         close();
         block.setNumBytes(replicaInfo.getNumBytes());
 
-        LOG.fatal("[datanode] stage: " + stage + ", isDatanode: " + isDatanode + ", isTransfer:" + isTransfer);
         if (stage == BlockConstructionStage.TRANSFER_RBW) {
           // for TRANSFER_RBW, convert temporary to RBW
           datanode.data.convertTemporaryToRbw(block);
@@ -1388,5 +1383,9 @@ class BlockReceiver implements Closeable {
         + ", ackStatus=" + ackStatus
         + ")";
     }
+  }
+  
+  public long getReceivedBytes() {
+	  return replicaInfo.getNumBytes();
   }
 }

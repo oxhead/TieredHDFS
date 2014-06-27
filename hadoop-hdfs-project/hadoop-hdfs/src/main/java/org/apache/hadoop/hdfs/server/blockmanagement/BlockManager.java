@@ -834,9 +834,7 @@ public class BlockManager {
       " numCorrupt: " + numCorruptNodes +
       " numCorruptRepls: " + numCorruptReplicas;
     final ExtendedBlock eb = new ExtendedBlock(namesystem.getBlockPoolId(), blk);
-    LocatedBlock b = new LocatedBlock(eb, machines, pos, isCorrupt);
-    LOG.fatal("Allocated block: " + b + ", " + blk.getBlockCollection().getName());
-    return b;
+    return new LocatedBlock(eb, machines, pos, isCorrupt);
   }
 
   /** Create a LocatedBlocks. */
@@ -2230,18 +2228,12 @@ public class BlockManager {
 	BlockInfo oldBlockInfo = blocksMap.getStoredBlock(block);
 	int oldStorageIndex = oldBlockInfo.findStorageInfo(node);
 	if (oldStorageIndex >= 0) {
-	  LOG.fatal("[BM] found old storage");
 	  DatanodeStorageInfo oldStorageInfo = oldBlockInfo.getStorageInfo(oldStorageIndex);
       DatanodeStorageInfo newStorageInfo = node.getStorageInfo(storageID);
 	  oldBlockInfo.removeStorage(oldStorageInfo);
 	  oldBlockInfo.addStorage(newStorageInfo);
-	  LOG.fatal("[BM] old storage=" + oldStorageInfo + ", new storage=" + newStorageInfo);
-	  Iterator<DatanodeStorageInfo> dsInfos = blocksMap.getStorages(block).iterator();
-	  for ( ;dsInfos.hasNext(); ) {
-		LOG.fatal("[BM] x=" + dsInfos.next());
-	  }
 	} else {
-	  LOG.fatal("[BM] old storage doest not exist");
+		LOG.fatal("Block is not stored on node " + node.getHostName());
 	}
   }
 
@@ -2832,13 +2824,10 @@ public class BlockManager {
             + " is expected to be removed from an unrecorded node " + delHint);
       }
     }
-    LOG.fatal("[BM] delHint=" + delHintNode + ", block=" + block + ", storage=" + storageID);
     // hack to replace storage on the same node
     if (node.equals(delHintNode)) {
-      LOG.fatal("[BM] replace storage=" + storageID + ", block=" + block);
       replaceStoredBlock(block, node, storageID);
     } else {
-      LOG.fatal("[BM] normal adding block");
     //
     // Modify the blocks->datanode map and node's map.
     //
@@ -2920,7 +2909,6 @@ public class BlockManager {
     }
 
     for (ReceivedDeletedBlockInfo rdbi : srdb.getBlocks()) {
-      LOG.fatal("[blockmanager] recieve report block=" + rdbi);
       switch (rdbi.getStatus()) {
       case DELETED_BLOCK:
         removeStoredBlock(rdbi.getBlock(), node);

@@ -405,7 +405,8 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
    * @throws ReplicaNotFoundException if no entry is in the map or 
    *                        there is a generation stamp mismatch
    */
-  ReplicaInfo getReplicaInfo(ExtendedBlock b)
+  @Override // FsDatasetSpi
+  public ReplicaInfo getReplicaInfo(ExtendedBlock b)
       throws ReplicaNotFoundException {
     ReplicaInfo info = volumeMap.get(b.getBlockPoolId(), b.getLocalBlock());
     if (info == null) {
@@ -750,7 +751,6 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   public synchronized ReplicaInPipeline createRbw(ExtendedBlock b,
     StorageType storageType)
       throws IOException {
-	 LOG.fatal("[fs] creating rwb file: " + b);
     ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), 
         b.getBlockId());
     if (replicaInfo != null) {
@@ -771,7 +771,6 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   @Override // FsDatasetSpi
   public synchronized ReplicaInPipeline createRbw(ExtendedBlock b,
     String storageID) throws IOException {
-	  LOG.fatal("[fs] creating rwb file: " + b);
 	    ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), 
 	        b.getBlockId());
 	    if (replicaInfo != null) {
@@ -917,7 +916,6 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   public synchronized ReplicaInPipeline createTemporary(ExtendedBlock b,
     StorageType storagePreference)
       throws IOException {
-	LOG.fatal("[fs] creating temporary file: " + b);
     ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), b.getBlockId());
     if (replicaInfo != null) {
       throw new ReplicaAlreadyExistsException("Block " + b +
@@ -939,7 +937,6 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   public synchronized ReplicaInPipeline createTemporary(ExtendedBlock b,
     String storageID)
       throws IOException {
-	LOG.fatal("[fs] creating temporary file: " + b);
     ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), b.getBlockId());
     if (replicaInfo != null) {
       throw new ReplicaAlreadyExistsException("Block " + b +
@@ -1975,19 +1972,23 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   @Override
   public String move(ExtendedBlock block, String storageID) throws IOException {
     ReplicaInfo replica = fetchReplicaInfo(block.getBlockPoolId(), block.getBlockId()); 
-    LOG.fatal("[dataset] replica to move: " + replica);
     volumeMap.remove(block.getBlockPoolId(), block.getLocalBlock());
 
     ReplicaInPipeline tempReplica = createTemporary(block, storageID);
     copyReplica(replica, tempReplica);
+    tempReplica.setNumBytes(replica.getNumBytes());
+    tempReplica.setGenerationStamp(replica.getGenerationStamp());
     finalizeBlock(block);
-
+    
     if (replica.getBlockFile() != null && replica.getBlockFile().exists()) {
       replica.getBlockFile().delete();
     }
     if (replica.getMetaFile() != null && replica.getMetaFile().exists()) {
       replica.getMetaFile().delete();
     }
+    DatanodeStorage fromStorage = this.getStorage(replica.getStorageUuid());
+    DatanodeStorage toStorage = this.getStorage(tempReplica.getStorageUuid());
+    LOG.fatal("Move " + block + " from " + fromStorage.getStorageID() + ":" + fromStorage.getStorageType() + " to " + toStorage.getStorageID() + ":" + toStorage.getStorageType() );
     return replica.getStorageUuid();
   }
 

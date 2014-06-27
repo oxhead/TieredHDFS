@@ -205,17 +205,14 @@ public class BlockInfo extends Block implements LightWeightGSet.LinkedElement {
     int idx = findDatanode(storage.getDatanodeDescriptor());
     if(idx >= 0) {
       if (getStorageInfo(idx) == storage) { // the storage is already there
-        LOG.fatal("[BI] already");
         return false;
       } else {
         // The block is on the DN but belongs to a different storage.
         // Update our state.
-        LOG.fatal("[BI] remove");
         removeStorage(storage);
         added = false;      // Just updating storage. Return false.
       }
     }
-    LOG.fatal("[BI] remove");
     // find the last null node
     int lastNode = ensureCapacity(1);
     setStorageInfo(lastNode, storage);

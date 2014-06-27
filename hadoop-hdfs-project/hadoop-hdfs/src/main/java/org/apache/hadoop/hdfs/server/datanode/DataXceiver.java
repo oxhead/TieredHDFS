@@ -49,6 +49,7 @@ import org.apache.hadoop.hdfs.ExtendedBlockId;
 import org.apache.hadoop.hdfs.ShortCircuitShm.SlotId;
 import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.net.Peer;
+import org.apache.hadoop.hdfs.protocol.BlockLocalPathInfo;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
@@ -76,6 +77,7 @@ import org.apache.hadoop.hdfs.server.datanode.DataNode.ShortCircuitFdsVersionExc
 import org.apache.hadoop.hdfs.server.datanode.ShortCircuitRegistry.NewShmInfo;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.LengthInputStream;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
+import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.MD5Hash;
 import org.apache.hadoop.net.NetUtils;
@@ -504,11 +506,14 @@ class DataXceiver extends Receiver implements Runnable {
       // send op status
       writeSuccessWithChecksumInfo(blockSender, new DataOutputStream(getOutputStream()));
 
-      long startTime = System.currentTimeMillis();
+      long timestamp = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       long read = blockSender.sendBlock(out, baseStream, null); // send data
-      long elapsedTime = System.currentTimeMillis() - startTime;
+      long elapsedTime = System.nanoTime() - startTime;
+      ReplicaInfo replica = this.datanode.getFSDataset().getReplicaInfo(block);
+      DatanodeStorage storage = this.datanode.getFSDataset().getStorage(replica.getStorageUuid());
       //workload collector
-      WorkloadCollector.reportReadOperation(block, blockOffset, length, clientName, remoteAddress, elapsedTime);
+      this.datanode.workloadCollector.reportReadOperation(this.datanode.getDatanodeUuid(), storage.getStorageID(), storage.getStorageType(), block, blockOffset, length, clientName, remoteAddress, timestamp, elapsedTime);
 
       if (blockSender.didSendEntireByteRange()) {
         // If we sent the entire range, then we should expect the client
@@ -743,9 +748,12 @@ class DataXceiver extends Receiver implements Runnable {
       // receive the block and mirror to the next target
       if (blockReceiver != null) {
         String mirrorAddr = (mirrorSock == null) ? null : mirrorNode;
+        long timestamp = System.currentTimeMillis();
+        long startTime = System.nanoTime();
         blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut,
             mirrorAddr, null, targets);
-
+        long elapsedTime = System.nanoTime() - startTime;
+        LOG.fatal("[write] " + block + ", min=" + minBytesRcvd + ", max=" + maxBytesRcvd + ", storageID" + storageID + ", elapsedTime=" + elapsedTime);
         // send close-ack for transfer-RBW/Finalized 
         if (isTransfer) {
           if (LOG.isTraceEnabled()) {
@@ -944,7 +952,6 @@ class DataXceiver extends Receiver implements Runnable {
       final String storageId,
       final StorageType storageTypeReference) throws IOException {
     updateCurrentThreadName("Replacing block " + block + " from " + delHint);
-    LOG.fatal("[datanode] replace block " + block + " -> storageID=" + storageId + ", preference=" + storageTypeReference);
     /* read header */
     block.setNumBytes(dataXceiverServer.estimateBlockSize);
     if (datanode.isBlockTokenEnabled) {
@@ -1007,16 +1014,11 @@ class DataXceiver extends Receiver implements Runnable {
       proxyReply = new DataInputStream(new BufferedInputStream(unbufProxyIn,
           HdfsConstants.IO_FILE_BUFFER_SIZE));
 
-      LOG.fatal("[datanode] src=" + proxySource + ", dest=" + this.datanode.getDatanodeInfo() + ", delHint=" + delHint);
       if (proxySource.getDatanodeUuid().equals(datanode.getDatanodeUuid())) {
-        LOG.fatal("[datanode] migrate locally");
-        String oldStorageID = datanode.data.move(block, storageId);
-        LOG.fatal("[data] notify namenode about the deleted block, hint=" + delHint + ", oldStorage=" + oldStorageID);
+    	// check successul operation?
+        datanode.data.move(block, storageId);
         datanode.notifyNamenodeReceivedBlock(block, delHint, storageId);
-        //datanode.notifyNamenodeDeletedBlock(block, oldStorageID);
-        LOG.fatal("[datanode] migrate local finish");
       } else {
-        LOG.fatal("[datanode] migrate remotely");
       /* send request to the proxy */
       new Sender(proxyOut).copyBlock(block, blockToken);
       // receive the response from the proxy

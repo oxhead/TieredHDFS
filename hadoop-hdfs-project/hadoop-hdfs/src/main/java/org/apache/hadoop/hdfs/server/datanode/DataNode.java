@@ -237,6 +237,7 @@ public class DataNode extends Configured
   private ObjectName dataNodeInfoBeanName;
 
   private ScheduledExecutorService workloadCollectorService;
+  WorkloadCollector workloadCollector;
 
   /**
    * Create the DataNode given a configuration, an array of dataDirs,
@@ -283,9 +284,6 @@ public class DataNode extends Configured
     try {
       hostName = getHostName(conf);
       LOG.info("Configured hostname is " + hostName);
-      for (StorageLocation s : dataDirs) {
-    	  LOG.fatal("valid data dir: " + s);
-      }
       startDataNode(conf, dataDirs, resources);
     } catch (IOException ie) {
       shutdown();
@@ -761,24 +759,25 @@ public class DataNode extends Configured
 
     // start report service
     if (conf.getBoolean(DFSConfigKeys.DFS_TIER_ENABLED, DFSConfigKeys.DFS_TIER_ENABLED_DEFAULT)) {
-      WorkloadCollector.enable();
+      workloadCollector = new WorkloadCollector();
+      workloadCollector.initialize();
       workloadCollectorService = Executors.newScheduledThreadPool(1);
       workloadCollectorService.scheduleAtFixedRate(new Runnable() {
 
           @Override
 	  public void run() {
-	    List<Workload> workloads = WorkloadCollector.pollWorkloads();
+	    List<Workload> workloads = workloadCollector.pollWorkloads();
 	    for (BPOfferService bpos : DataNode.this.getAllBpOs()) {
-              try {
-                LOG.fatal("[Report] workload size=" + workloads.size());
-                bpos.getActiveNN().workloadReport(bpos.bpRegistration, workloads);
+          try {
+            bpos.getActiveNN().workloadReport(bpos.bpRegistration, workloads);
 	      } catch (IOException e) {
-                LOG.fatal("Unable to report workload", e);
+            LOG.fatal("Unable to report workload", e);
 	      }
 	    }
           }
       }, 60, 15, TimeUnit.SECONDS);
     }
+
   }
   
   public static String generateUuid() {

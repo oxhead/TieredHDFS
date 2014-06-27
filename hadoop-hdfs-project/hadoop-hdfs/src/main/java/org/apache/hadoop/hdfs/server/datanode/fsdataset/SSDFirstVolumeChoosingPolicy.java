@@ -52,13 +52,9 @@ public class SSDFirstVolumeChoosingPolicy<V extends FsVolumeSpi>
 	    }
 	    
 	    List<VolumeRecord> orderedVolumedList = getSortedVolumeList(volumes, blockSize, storagePreference);
-	    for (int i = 0; i < orderedVolumedList.size(); i++) {
-	    	LOG.fatal("[volume] record[" + i + "]: " + orderedVolumedList.get(i));
-	    }
 	    
 	    if (orderedVolumedList.size() > 0) {
 	    	VolumeRecord selectedVolumn = orderedVolumedList.get(0);
-	    	LOG.fatal("[volume] choose volume=" + selectedVolumn.volume + ", accessCount=" + selectedVolumn.accessCount);
 	    	incrementAccessCount(selectedVolumn.volume);
 	    	return orderedVolumedList.get(0).volume;
 	    } 
@@ -104,12 +100,10 @@ public class SSDFirstVolumeChoosingPolicy<V extends FsVolumeSpi>
   }
   
   public void setSkipRecord(V v) {
-	  LOG.fatal("[volume] set skip record: " + v);
 	  skipRecord.put(v.getStorageID(), true);
   }
   
   public void removeSkipRecord(V v) {
-	  LOG.fatal("[volume] remove skip record: " + v);
 	  skipRecord.remove(v.getStorageID());
   }
   

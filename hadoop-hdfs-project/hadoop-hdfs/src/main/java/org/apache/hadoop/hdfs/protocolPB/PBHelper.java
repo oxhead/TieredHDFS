@@ -2092,13 +2092,23 @@ public class PBHelper {
   public static Workload convert(WorkloadProto p) {
     return new Workload(
         PBHelper.convert(p.getBlock()),
-        p.getAccessCount());
+        p.getStorageUuid(),
+        PBHelper.convertType(p.getStorageType()),
+        p.getTimestamp(),
+        p.getElapsedTime(),
+        p.getOffset(),
+        p.getLength());
   }
 
   public static WorkloadProto convert(Workload workload) {
     WorkloadProto.Builder builder = WorkloadProto.newBuilder();
     builder.setBlock(PBHelper.convert(workload.getBlock()));
-    builder.setAccessCount(workload.getAccessCount());
+    builder.setStorageUuid(workload.getStorageUuid());
+    builder.setStorageType(PBHelper.convertStorageType(workload.getStorageType()));
+    builder.setTimestamp(workload.getTimestamp());
+    builder.setElapsedTime(workload.getElapsedTime());
+    builder.setOffset(workload.getOffset());
+    builder.setLength(workload.getLength());
 	return builder.build();
   }
 }

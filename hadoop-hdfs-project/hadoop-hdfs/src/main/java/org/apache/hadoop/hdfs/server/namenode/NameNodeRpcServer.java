@@ -1373,6 +1373,7 @@ class NameNodeRpcServer implements NamenodeProtocols {
   @Override
   public void workloadReport(DatanodeRegistration nodeReg,
       List<Workload> workloads) throws IOException {
+	LOG.fatal("receiving trace from " + nodeReg.getHostName());
     nn.tieredStorageManager.workloadReport(nodeReg, workloads);
   }
 }
