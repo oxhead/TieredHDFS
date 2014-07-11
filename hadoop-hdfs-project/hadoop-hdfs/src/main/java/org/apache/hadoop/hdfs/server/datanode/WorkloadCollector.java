@@ -61,7 +61,19 @@ public class WorkloadCollector {
 	public void reportReadOperation(String datanodeUUID, String storageUuid, StorageType storageType, ExtendedBlock block, long offset, long length, String clientName, String remoteAddress,
 			long timestamp, long elapsedTime) {
 		if (enable) {
-			Workload record = new Workload(block, storageUuid, storageType, timestamp, elapsedTime, offset, length);
+			Workload record = new Workload(block, storageUuid, storageType, timestamp, elapsedTime, offset, length, clientName);
+			lock.lock();
+			accessRecrods.add(record);
+			lock.unlock();
+			WorkloadDetail entry = new WorkloadDetail(timestamp, elapsedTime, offset, length, block, datanodeUUID, storageUuid, storageType.toString());
+			queue.add(entry);
+		}
+	}
+
+	public void reportWriteOperation(String datanodeUUID, String storageUuid, StorageType storageType, ExtendedBlock block, long offset, long length, String clientName, String remoteAddress,
+			long timestamp, long elapsedTime) {
+		if (enable) {
+			Workload record = new Workload(block, storageUuid, storageType, timestamp, elapsedTime, offset, length, clientName);
 			lock.lock();
 			accessRecrods.add(record);
 			lock.unlock();

@@ -14,8 +14,9 @@ public class Workload {
 	private long elapsedTime;
 	private long offset;
 	private long length;
+	private String clientName;
 
-	public Workload(ExtendedBlock block, String storageUuid, StorageType storageType, long timestamp, long elapsedTime, long offset, long length) {
+	public Workload(ExtendedBlock block, String storageUuid, StorageType storageType, long timestamp, long elapsedTime, long offset, long length, String clientName) {
 		this.block = block;
 		this.storageUuid = storageUuid;
 		this.storageType = storageType;
@@ -23,6 +24,7 @@ public class Workload {
 		this.elapsedTime = elapsedTime;
 		this.offset = offset;
 		this.length = length;
+		this.clientName = clientName;
 	}
 
 	public ExtendedBlock getBlock() {
@@ -51,6 +53,10 @@ public class Workload {
 
 	public long getLength() {
 		return length;
+	}
+
+	public String getClientName() {
+		return clientName;
 	}
 
 }

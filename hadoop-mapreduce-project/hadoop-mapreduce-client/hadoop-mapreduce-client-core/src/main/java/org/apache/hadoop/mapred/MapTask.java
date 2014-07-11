@@ -336,6 +336,9 @@ public class MapTask extends Task {
       return;
     }
 
+    LOG.fatal("^ jobName=" + job.get("mapreduce.job.name"));
+    LOG.fatal("^ taskId=" + job.get("mapreduce.task.attempt.id"));
+
     if (useNewApi) {
       runNewMapper(job, splitMetaInfo, umbilical, reporter);
     } else {

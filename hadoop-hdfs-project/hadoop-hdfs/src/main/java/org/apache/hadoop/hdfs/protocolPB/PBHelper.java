@@ -2097,7 +2097,8 @@ public class PBHelper {
         p.getTimestamp(),
         p.getElapsedTime(),
         p.getOffset(),
-        p.getLength());
+        p.getLength(),
+        p.getClientName());
   }
 
   public static WorkloadProto convert(Workload workload) {
@@ -2109,6 +2110,7 @@ public class PBHelper {
     builder.setElapsedTime(workload.getElapsedTime());
     builder.setOffset(workload.getOffset());
     builder.setLength(workload.getLength());
+    builder.setClientName(workload.getClientName());
 	return builder.build();
   }
 }

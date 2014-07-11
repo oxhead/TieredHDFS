@@ -490,4 +490,5 @@ message WorkloadProto {
 	required uint64 elapsedTime = 5;
 	required uint64 offset = 6;
 	required uint64 length = 7;
+	required string clientName = 8;
 }

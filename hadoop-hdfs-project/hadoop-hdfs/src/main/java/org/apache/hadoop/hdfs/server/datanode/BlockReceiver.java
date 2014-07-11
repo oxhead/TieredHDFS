@@ -702,12 +702,13 @@ class BlockReceiver implements Closeable {
     }
   }
 
-  void receiveBlock(
+  long receiveBlock(
       DataOutputStream mirrOut, // output to next datanode
       DataInputStream mirrIn,   // input from next datanode
       DataOutputStream replyOut,  // output to previous datanode
       String mirrAddr, DataTransferThrottler throttlerArg,
       DatanodeInfo[] downstreams) throws IOException {
+	  long receivedBytes = 0L;
 
       syncOnClose = datanode.getDnConf().syncOnClose;
       boolean responderClosed = false;
@@ -721,7 +722,7 @@ class BlockReceiver implements Closeable {
             new PacketResponder(replyOut, mirrIn, downstreams));
         responder.start(); // start thread to processes responses
       }
-      while (receivePacket() >= 0) { /* Receive until the last packet */ }
+      while ((receivedBytes += receivePacket()) >= 0) { /* Receive until the last packet */ }
       // wait for all outstanding packet responses. And then
       // indicate responder to gracefully shutdown.
       // Mark that responder has been closed for future processing
@@ -831,6 +832,7 @@ class BlockReceiver implements Closeable {
         responder = null;
       }
     }
+    return receivedBytes;
   }
 
   /** Cleanup a partial block 

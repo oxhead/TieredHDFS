@@ -37,8 +37,10 @@ public class WorkloadAnalyzer {
 					LOG.fatal("getting trace data");
 					Workload entry = traceQueue.take();
 					long timePoint = (int) ((entry.getTimestamp() - initTime) / 1000);
-					String record = String.format("%6s, %s, %4s, %s, %12s, %6s, %6s", timePoint, entry.getStorageUuid(), entry.getStorageType(), entry.getBlock().getBlockName(),
-							entry.getElapsedTime(), entry.getOffset(), entry.getLength());
+					String jobName = parseJobName(entry);
+					String taskType = parseTaskType(entry);
+					String record = String.format("%6s, %s, %4s, %s, %12s, %6s, %10s, %12s, %8s", timePoint, entry.getStorageUuid(), entry.getStorageType(), entry.getBlock().getBlockName(),
+							entry.getElapsedTime(), entry.getOffset(), entry.getLength(), jobName, taskType);
 					trace.write(record);
 					trace.newLine();
 					trace.flush();
@@ -83,6 +85,25 @@ public class WorkloadAnalyzer {
 
 	public int getAccessCount(Map<Block, Integer> record, Block block) {
 		return record.containsKey(block) ? record.get(block) : 0;
+	}
+
+	private String parseJobName(Workload workload) {
+		String jobName = "null";
+		try {
+			jobName = workload.getClientName().split("_")[1];
+		} catch (Exception e) {
+		}
+		return jobName.equalsIgnoreCase("null") ? "default" : jobName;
+	}
+
+	private String parseTaskType(Workload workload) {
+		String taskType = "default";
+		try {
+			taskType = workload.getClientName().split("_")[5];
+		} catch (Exception e) {
+		}
+		LOG.fatal("@ " + workload.getClientName() + ", " + taskType);
+		return taskType.equalsIgnoreCase("m") ? "MAP" : taskType.equalsIgnoreCase("r") ? "REDUCE" : "default";
 	}
 
 }

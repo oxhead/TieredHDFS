@@ -513,6 +513,7 @@ class DataXceiver extends Receiver implements Runnable {
       ReplicaInfo replica = this.datanode.getFSDataset().getReplicaInfo(block);
       DatanodeStorage storage = this.datanode.getFSDataset().getStorage(replica.getStorageUuid());
       //workload collector
+      LOG.fatal("reader src client=" + clientName);
       this.datanode.workloadCollector.reportReadOperation(this.datanode.getDatanodeUuid(), storage.getStorageID(), storage.getStorageType(), block, blockOffset, length, clientName, remoteAddress, timestamp, elapsedTime);
 
       if (blockSender.didSendEntireByteRange()) {
@@ -581,7 +582,7 @@ class DataXceiver extends Receiver implements Runnable {
     final boolean isClient = !isDatanode;
     final boolean isTransfer = stage == BlockConstructionStage.TRANSFER_RBW
         || stage == BlockConstructionStage.TRANSFER_FINALIZED;
-
+    LOG.fatal("writer src client=" + clientname);
     // check single target for transfer-RBW/Finalized 
     if (isTransfer && targets.length > 0) {
       throw new IOException(stage + " does not support multiple targets "
@@ -750,7 +751,7 @@ class DataXceiver extends Receiver implements Runnable {
         String mirrorAddr = (mirrorSock == null) ? null : mirrorNode;
         long timestamp = System.currentTimeMillis();
         long startTime = System.nanoTime();
-        blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut,
+        long receivedBytes = blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut,
             mirrorAddr, null, targets);
         long elapsedTime = System.nanoTime() - startTime;
         LOG.fatal("[write] " + block + ", min=" + minBytesRcvd + ", max=" + maxBytesRcvd + ", storageID" + storageID + ", elapsedTime=" + elapsedTime);
