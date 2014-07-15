@@ -722,7 +722,11 @@ class BlockReceiver implements Closeable {
             new PacketResponder(replyOut, mirrIn, downstreams));
         responder.start(); // start thread to processes responses
       }
-      while ((receivedBytes += receivePacket()) >= 0) { /* Receive until the last packet */ }
+      int length = 0;
+      while ( (length = receivePacket()) >= 0) { 
+        /* Receive until the last packet */
+        receivedBytes += length;
+      }
       // wait for all outstanding packet responses. And then
       // indicate responder to gracefully shutdown.
       // Mark that responder has been closed for future processing
