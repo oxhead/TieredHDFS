@@ -261,7 +261,8 @@ public class BlockManager {
     this.namesystem = namesystem;
     datanodeManager = new DatanodeManager(this, namesystem, conf);
     heartbeatManager = datanodeManager.getHeartbeatManager();
-    invalidateBlocks = new InvalidateBlocks(datanodeManager);
+    invalidateBlocks = new InvalidateBlocks(
+        datanodeManager.blockInvalidateLimit);
 
     // Compute the map capacity by allocating 2% of total memory
     blocksMap = new BlocksMap(
@@ -699,7 +700,7 @@ public class BlockManager {
 
     // remove this block from the list of pending blocks to be deleted. 
     for (DatanodeStorageInfo storage : targets) {
-      invalidateBlocks.remove(storage.getStorageID(), oldBlock);
+      invalidateBlocks.remove(storage.getDatanodeDescriptor(), oldBlock);
     }
     
     // Adjust safe-mode totals, since under-construction blocks don't
@@ -724,7 +725,7 @@ public class BlockManager {
     for(DatanodeStorageInfo storage : blocksMap.getStorages(block)) {
       final String storageID = storage.getStorageID();
       // filter invalidate replicas
-      if(!invalidateBlocks.contains(storageID, block)) {
+      if(!invalidateBlocks.contains(storage.getDatanodeDescriptor(), block)) {
         locations.add(storage);
       }
     }
@@ -947,6 +948,16 @@ public class BlockManager {
   }
 
   /**
+   * Check if a block is replicated to at least the minimum replication.
+   */
+  public boolean isSufficientlyReplicated(BlockInfo b) {
+    // Compare against the lesser of the minReplication and number of live DNs.
+    final int replication =
+        Math.min(minReplication, getDatanodeManager().getNumLiveDataNodes());
+    return countNodes(b).liveReplicas() >= replication;
+  }
+
+  /**
    * return a list of blocks & their locations on <code>datanode</code> whose
    * total size is <code>size</code>
    * 
@@ -1016,7 +1027,7 @@ public class BlockManager {
     }
 
     node.resetBlocks();
-    invalidateBlocks.remove(node.getDatanodeUuid());
+    invalidateBlocks.remove(node);
     
     // If the DN hasn't block-reported since the most recent
     // failover, then we may have been holding up on processing
@@ -1183,7 +1194,7 @@ public class BlockManager {
    * @return total number of block for deletion
    */
   int computeInvalidateWork(int nodesToProcess) {
-    final List<String> nodes = invalidateBlocks.getStorageIDs();
+    final List<DatanodeInfo> nodes = invalidateBlocks.getDatanodes();
     Collections.shuffle(nodes);
 
     nodesToProcess = Math.min(nodes.size(), nodesToProcess);
@@ -1975,7 +1986,7 @@ public class BlockManager {
     }
 
     // Ignore replicas already scheduled to be removed from the DN
-    if(invalidateBlocks.contains(dn.getDatanodeUuid(), block)) {
+    if(invalidateBlocks.contains(dn, block)) {
       /*
        * TODO: following assertion is incorrect, see HDFS-2668 assert
        * storedBlock.findDatanode(dn) < 0 : "Block " + block +
@@ -3212,7 +3223,9 @@ public class BlockManager {
    *
    * @return number of blocks scheduled for removal during this iteration.
    */
-  private int invalidateWorkForOneNode(String nodeId) {
+  private int invalidateWorkForOneNode(DatanodeInfo dn) {
+    final List<Block> toInvalidate;
+    
     namesystem.writeLock();
     try {
       // blocks should not be replicated or removed if safe mode is on
@@ -3220,12 +3233,23 @@ public class BlockManager {
         LOG.debug("In safemode, not computing replication work");
         return 0;
       }
-      // get blocks to invalidate for the nodeId
-      assert nodeId != null;
-      return invalidateBlocks.invalidateWork(nodeId);
+      try {
+        toInvalidate = invalidateBlocks.invalidateWork(datanodeManager.getDatanode(dn));
+        
+        if (toInvalidate == null) {
+          return 0;
+        }
+      } catch(UnregisteredNodeException une) {
+        return 0;
+      }
     } finally {
       namesystem.writeUnlock();
     }
+    if (NameNode.stateChangeLog.isInfoEnabled()) {
+      NameNode.stateChangeLog.info("BLOCK* " + getClass().getSimpleName()
+          + ": ask " + dn + " to delete " + toInvalidate);
+    }
+    return toInvalidate.size();
   }
 
   boolean blockHasEnoughRacks(Block b) {

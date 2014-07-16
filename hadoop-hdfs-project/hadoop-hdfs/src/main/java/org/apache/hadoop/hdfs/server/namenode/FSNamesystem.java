@@ -791,7 +791,19 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
   public RetryCache getRetryCache() {
     return retryCache;
   }
-  
+
+  void lockRetryCache() {
+    if (retryCache != null) {
+      retryCache.lock();
+    }
+  }
+
+  void unlockRetryCache() {
+    if (retryCache != null) {
+      retryCache.unlock();
+    }
+  }
+
   /** Whether or not retry cache is enabled */
   boolean hasRetryCache() {
     return retryCache != null;
@@ -2374,7 +2386,13 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
       // finalizeINodeFileUnderConstruction so we need to refresh 
       // the referenced file.  
       myFile = INodeFile.valueOf(dir.getINode(src), src, true);
-      
+      final BlockInfo lastBlock = myFile.getLastBlock();
+      // Check that the block has at least minimum replication.
+      if(lastBlock != null && lastBlock.isComplete() &&
+          !getBlockManager().isSufficientlyReplicated(lastBlock)) {
+        throw new IOException("append: lastBlock=" + lastBlock +
+            " of src=" + src + " is not sufficiently replicated yet.");
+      }
       final DatanodeDescriptor clientNode = 
           blockManager.getDatanodeManager().getDatanodeByHost(clientMachine);
       return prepareFileForWrite(src, myFile, holder, clientMachine, clientNode,
@@ -6922,8 +6940,8 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
     if (cacheEntry != null && cacheEntry.isSuccess()) {
       return (String) cacheEntry.getPayload();
     }
-    writeLock();
     String snapshotPath = null;
+    writeLock();
     try {
       checkOperation(OperationCategory.WRITE);
       checkNameNodeSafeMode("Cannot create snapshot for " + snapshotRoot);

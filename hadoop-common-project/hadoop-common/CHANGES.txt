@@ -1,6 +1,4 @@
-Hadoop Change Log
-
-Release 2.4.1 - UNRELEASED
+Release 2.4.1 - 2014-06-23 
 
   INCOMPATIBLE CHANGES
 
@@ -8,9 +6,35 @@ Release 2.4.1 - UNRELEASED
 
   IMPROVEMENTS
 
+    HADOOP-10466. Lower the log level in UserGroupInformation.  (Nicolas
+    Liochon via szetszwo)
+
   OPTIMIZATIONS
 
   BUG FIXES 
+
+    HADOOP-10455. When there is an exception, ipc.Server should first check
+    whether it is an terse exception.  (szetszwo)
+
+    HADOOP-10456. Bug in Configuration.java exposed by Spark
+    (ConcurrentModificationException).  (Nishkam Ravi via cnauroth)
+
+    HADOOP-10473. TestCallQueueManager should interrupt before counting calls.
+    (szetszwo)
+
+    HADOOP-10490. TestMapFile and TestBloomMapFile leak file descriptors.
+    (cnauroth)
+
+    HADOOP-10522. JniBasedUnixGroupMapping mishandles errors. (kihwal)
+
+    HADOOP-10527. Fix incorrect return code and allow more retries on EINTR.
+    (kihwal)
+
+    HADOOP-10612. NFS failed to refresh the user group id mapping table (brandonli)
+
+    HADOOP-10562. Namenode exits on exception without printing stack trace
+    in AbstractDelegationTokenSecretManager. (Suresh Srinivas via Arpit
+    Agarwal)
 
 Release 2.4.0 - 2014-04-07 
 
@@ -2450,6 +2474,9 @@ Release 0.23.11 - UNRELEASED
   BUG FIXES
 
     HADOOP-10129. Distcp may succeed when it fails (daryn)
+
+    HADOOP-8826. Docs still refer to 0.20.205 as stable line (Mit Desai via
+    jeagles)
 
 Release 0.23.10 - UNRELEASED
 

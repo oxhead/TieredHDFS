@@ -73,6 +73,7 @@ public class TestDistributedShell {
     conf.setClass(YarnConfiguration.RM_SCHEDULER, 
         FifoScheduler.class, ResourceScheduler.class);
     conf.set("yarn.log.dir", "target");
+    conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED, true);
     if (yarnCluster == null) {
       yarnCluster = new MiniYARNCluster(
         TestDistributedShell.class.getSimpleName(), 1, 1, 1, 1, true);
@@ -219,7 +220,7 @@ public class TestDistributedShell {
         "--num_containers",
         "1",
         "--shell_command",
-        Shell.WINDOWS ? "timeout 8" : "sleep 8",
+        "sleep 8",
         "--master_memory",
         "512",
         "--container_memory",

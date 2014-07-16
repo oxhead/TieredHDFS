@@ -1,6 +1,6 @@
 Hadoop YARN Change Log
 
-Release 2.4.1 - UNRELEASED
+Release 2.4.1 - 2014-06-23 
 
   INCOMPATIBLE CHANGES
 
@@ -8,9 +8,117 @@ Release 2.4.1 - UNRELEASED
 
   IMPROVEMENTS
 
+    YARN-1892. Improved some logs in the scheduler. (Jian He via zjshen)
+
+    YARN-1696. Added documentation for ResourceManager fail-over. (Karthik
+    Kambatla, Masatake Iwasaki, Tsuyoshi OZAWA via vinodkv)
+
+    YARN-1701. Improved default paths of the timeline store and the generic
+    history store. (Tsuyoshi Ozawa via zjshen)
+
+    YARN-1962. Changed Timeline Service client configuration to be off by default
+    given the non-readiness of the feature yet. (Mohammad Kamrul Islam via
+    vinodkv)
+
   OPTIMIZATIONS
 
-  BUG FIXES 
+  BUG FIXES
+
+    YARN-1898. Made Standby RM links conf, stacks, logLevel, metrics, jmx, logs
+    and static not be redirected to Active RM. (Xuan Gong via zjshen)
+
+    YARN-1837. Fixed TestMoveApplication#testMoveRejectedByScheduler failure.
+    (Hong Zhiguo via jianhe)
+
+    YARN-1905. TestProcfsBasedProcessTree must only run on Linux. (cnauroth)
+
+    YARN-1883. TestRMAdminService fails due to inconsistent entries in
+    UserGroups (Mit Desai via jeagles)
+
+    YARN-1908. Fixed DistributedShell to not fail in secure clusters. (Vinod
+    Kumar Vavilapalli and Jian He via vinodkv)
+
+    YARN-1910. Fixed a race condition in TestAMRMTokens that causes the test to
+    fail more often on Windows. (Xuan Gong via vinodkv)
+
+    YARN-1920. Fixed TestFileSystemApplicationHistoryStore failure on windows.
+    (Vinod Kumar Vavilapalli via zjshen)
+
+    YARN-1914. Fixed resource-download on NodeManagers to skip permission
+    verification of public cache files in Windows+local file-system environment.
+    (Varun Vasudev via vinodkv)
+
+    YARN-1903. Set exit code and diagnostics when container is killed at
+    NEW/LOCALIZING state. (Zhijie Shen via jianhe)
+
+    YARN-1924. Made ZKRMStateStore updateApplication(Attempt)StateInternal work
+    when Application(Attempt) state hasn't been stored before. (Jian He via
+    zjshen)
+
+    YARN-1926. Changed DistributedShell to use appIDs as unique identifiers for
+    HDFS paths and thus avoid test failures on Windows. (Varun Vasudev via
+    vinodkv)
+
+    YARN-1907. TestRMApplicationHistoryWriter#testRMWritingMassiveHistory 
+    intermittently fails. (Mit Desai via kihwal)
+
+    YARN-1933. Fixed test issues with TestAMRestart and TestNodeHealthService.
+    (Jian He via vinodkv)
+
+    YARN-1928. Fixed a race condition in TestAMRMRPCNodeUpdates which caused it
+    to fail occassionally. (Zhijie Shen via vinodkv)
+
+    YARN-1934. Fixed a potential NPE in ZKRMStateStore caused by handling
+    Disconnected event from ZK. (Karthik Kambatla via jianhe)
+
+    YARN-1931. Private API change in YARN-1824 in 2.4 broke compatibility 
+    with previous releases (Sandy Ryza via tgraves)
+
+    YARN-1750. TestNodeStatusUpdater#testNMRegistration is incorrect in test 
+    case. (Wangda Tan via junping_du)
+
+    YARN-1947. TestRMDelegationTokens#testRMDTMasterKeyStateOnRollingMasterKey 
+    is failing intermittently. (Jian He via junping_du)
+
+    YARN-1281. Fixed TestZKRMStateStoreZKClientConnections to not fail
+    intermittently due to ZK-client timeouts. (Tsuyoshi Ozawa via vinodkv) 
+
+    YARN-1932. Javascript injection on the job status page (Mit Desai via
+    jlowe)
+
+    YARN-1975. Used resources shows escaped html in CapacityScheduler and
+    FairScheduler page (Mit Desai via jlowe)
+
+    YARN-1929. Fixed a deadlock in ResourceManager that occurs when failover
+    happens right at the time of shutdown. (Karthik Kambatla via vinodkv)
+
+    YARN-1201. TestAMAuthorization fails with local hostname cannot be resolved. 
+    (Wangda Tan via junping_du)
+
+    YARN-1861. Fixed a bug in RM to reset leader-election on fencing that was
+    causing both RMs to be stuck in standby mode when automatic failover is
+    enabled. (Karthik Kambatla and Xuan Gong via vinodkv)
+
+    YARN-1957. Consider the max capacity of the queue when computing the ideal
+    capacity for preemption. (Carlo Curino via cdouglas)
+
+    YARN-1986. In Fifo Scheduler, node heartbeat in between creating app and
+    attempt causes NPE (Hong Zhiguo via Sandy Ryza)
+
+    YARN-1976. Fix yarn application CLI to print the scheme of the tracking url
+    of failed/killed applications. (Junping Du via jianhe)
+
+    YARN-2016. Fix a bug in GetApplicationsRequestPBImpl to add the missed fields
+    to proto. (Junping Du via jianhe)
+
+    YARN-2053. Fixed a bug in AMS to not add null NMToken into NMTokens list from
+    previous attempts for work-preserving AM restart. (Wangda Tan via jianhe)
+
+    YARN-2066. Wrong field is referenced in GetApplicationsRequestPBImpl#mergeLocalToBuilder()
+    (Hong Zhiguo via junping_du)
+
+    YARN-2081. Fixed TestDistributedShell failure after YARN-1962. (Zhiguo Hong
+    via zjshen)
 
 Release 2.4.0 - 2014-04-07 
 
