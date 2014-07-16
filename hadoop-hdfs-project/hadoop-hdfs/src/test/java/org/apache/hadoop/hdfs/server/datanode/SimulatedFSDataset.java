@@ -749,6 +749,16 @@ public class SimulatedFSDataset implements FsDatasetSpi<FsVolumeSpi> {
   }
 
   @Override // FsDatasetSpi
+  public synchronized ReplicaInPipelineInterface createRbw(ExtendedBlock b, String s) throws IOException {
+    return createRbw(b);
+  }
+
+  @Override // FsDatasetSpi
+  public synchronized ReplicaInPipelineInterface createRbw(ExtendedBlock b, StorageType s) throws IOException {
+    return createRbw(b);
+  }
+
+  @Override // FsDatasetSpi
   public synchronized ReplicaInPipelineInterface createTemporary(ExtendedBlock b)
       throws IOException {
     if (isValidBlock(b)) {
@@ -763,6 +773,16 @@ public class SimulatedFSDataset implements FsDatasetSpi<FsVolumeSpi> {
     BInfo binfo = new BInfo(b.getBlockPoolId(), b.getLocalBlock(), true);
     map.put(binfo.theBlock, binfo);
     return binfo;
+  }
+
+  @Override // FsDatasetSpi
+  public synchronized ReplicaInPipelineInterface createTemporary(ExtendedBlock b, String s) throws IOException {
+    return createTemporary(b);
+  }
+
+  @Override // FsDatasetSpi
+  public synchronized ReplicaInPipelineInterface createTemporary(ExtendedBlock b, StorageType s) throws IOException {
+    return createTemporary(b);
   }
 
   synchronized InputStream getBlockInputStream(ExtendedBlock b
@@ -1115,5 +1135,16 @@ public class SimulatedFSDataset implements FsDatasetSpi<FsVolumeSpi> {
   public FsVolumeSpi getVolume(ExtendedBlock b) {
     throw new UnsupportedOperationException();
   }
+
+  @Override
+  public String move(ExtendedBlock b, String s) {
+    return "";
+  }
+
+  @Override
+  public ReplicaInfo getReplicaInfo(ExtendedBlock b) {
+    return null;
+  }
+
 }
 
