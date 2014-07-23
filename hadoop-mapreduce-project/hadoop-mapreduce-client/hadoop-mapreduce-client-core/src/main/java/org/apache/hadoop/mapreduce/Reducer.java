@@ -165,9 +165,18 @@ public class Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> {
    * control how the reduce task works.
    */
   public void run(Context context) throws IOException, InterruptedException {
+	boolean hasNext = false;
     setup(context);
     try {
-      while (context.nextKey()) {
+      while (true) {
+        long startTime = System.nanoTime();
+        hasNext = context.nextKeyValue();
+        long endTime = System.nanoTime();
+        long period = endTime - startTime;
+        context.getCounter("my", "reduce_waiting_time").increment(period);
+        if (!hasNext) {
+          break;
+        }
         reduce(context.getCurrentKey(), context.getValues(), context);
         // If a back up store is used, reset it
         Iterator<VALUEIN> iter = context.getValues().iterator();

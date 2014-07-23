@@ -77,6 +77,9 @@ class YarnChild {
     LOG.debug("Child starting");
 
     final JobConf job = new JobConf(MRJobConfig.JOB_CONF_FILE);
+    LOG.fatal("# path=" + new Path(MRJobConfig.JOB_CONF_FILE).toUri());
+    LOG.fatal("# jobName=" + job.get("mapreduce.job.name"));
+    LOG.fatal("# taskId=" + job.get("mapreduce.task.attempt.id"));
     // Initing with our JobConf allows us to avoid loading confs twice
     Limits.init(job);
     UserGroupInformation.setConfiguration(job);

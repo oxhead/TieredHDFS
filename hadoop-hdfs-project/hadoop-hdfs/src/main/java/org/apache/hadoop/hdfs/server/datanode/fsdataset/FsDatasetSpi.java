@@ -27,6 +27,7 @@ import java.util.Map;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
 import org.apache.hadoop.hdfs.protocol.BlockLocalPathInfo;
@@ -37,6 +38,7 @@ import org.apache.hadoop.hdfs.server.datanode.DataStorage;
 import org.apache.hadoop.hdfs.server.datanode.FinalizedReplica;
 import org.apache.hadoop.hdfs.server.datanode.Replica;
 import org.apache.hadoop.hdfs.server.datanode.ReplicaInPipelineInterface;
+import org.apache.hadoop.hdfs.server.datanode.ReplicaInfo;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsDatasetFactory;
 import org.apache.hadoop.hdfs.server.datanode.metrics.FSDatasetMBean;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand.RecoveringBlock;
@@ -104,6 +106,8 @@ public interface FsDatasetSpi<V extends FsVolumeSpi> extends FSDatasetMBean {
 
   /** @return a list of finalized blocks for the given block pool. */
   public List<FinalizedReplica> getFinalizedBlocks(String bpid);
+
+  public String move(ExtendedBlock block, String storageID) throws IOException;
 
   /**
    * Check whether the in-memory block record matches the block on the disk,
@@ -182,6 +186,12 @@ public interface FsDatasetSpi<V extends FsVolumeSpi> extends FSDatasetMBean {
    */
   public ReplicaInPipelineInterface createTemporary(ExtendedBlock b
       ) throws IOException;
+  
+  public ReplicaInPipelineInterface createTemporary(ExtendedBlock b,
+      StorageType storagePreference) throws IOException;
+  
+  public ReplicaInPipelineInterface createTemporary(ExtendedBlock b,
+	      String storageID) throws IOException;
 
   /**
    * Creates a RBW replica and returns the meta info of the replica
@@ -192,6 +202,12 @@ public interface FsDatasetSpi<V extends FsVolumeSpi> extends FSDatasetMBean {
    */
   public ReplicaInPipelineInterface createRbw(ExtendedBlock b
       ) throws IOException;
+  
+  public ReplicaInPipelineInterface createRbw(ExtendedBlock b,
+      StorageType storagePreference) throws IOException;
+  
+  public ReplicaInPipelineInterface createRbw(ExtendedBlock b,
+	      String storageID) throws IOException;
 
   /**
    * Recovers a RBW replica and returns the meta info of the replica
@@ -440,5 +456,7 @@ public interface FsDatasetSpi<V extends FsVolumeSpi> extends FSDatasetMBean {
    * @return true when trash is enabled
    */
   public boolean trashEnabled(String bpid);
+  
+  public ReplicaInfo getReplicaInfo(ExtendedBlock b) throws IOException; 
 }
 

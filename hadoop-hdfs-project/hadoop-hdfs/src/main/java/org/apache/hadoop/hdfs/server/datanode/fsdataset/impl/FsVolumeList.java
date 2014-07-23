@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.*;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsVolumeSpi;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.VolumeChoosingPolicy;
 import org.apache.hadoop.util.DiskChecker.DiskErrorException;
@@ -56,6 +57,22 @@ class FsVolumeList {
   // TODO should choose volume with storage type
   synchronized FsVolumeImpl getNextVolume(long blockSize) throws IOException {
     return blockChooser.chooseVolume(volumes, blockSize);
+  }
+  
+  synchronized FsVolumeImpl getNextVolume(long blockSize, StorageType storageType) throws IOException {
+    return blockChooser.chooseVolume(volumes, blockSize, storageType);
+  }
+  
+  synchronized FsVolumeImpl getVolume(long blockSize, String storageID) throws IOException {
+	if (storageID == null) {
+      throw new IOException("A null storageID is not allowed");
+	}
+	for (FsVolumeImpl v : volumes) {
+		if (v.getStorageID().equals(storageID)) {
+			return v;
+		}
+	}
+	return null;
   }
     
   long getDfsUsed() throws IOException {

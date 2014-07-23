@@ -24,6 +24,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.hdfs.ShortCircuitShm.SlotId;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
@@ -94,7 +95,9 @@ public interface DataTransferProtocol {
       final long maxBytesRcvd,
       final long latestGenerationStamp,
       final DataChecksum requestedChecksum,
-      final CachingStrategy cachingStrategy) throws IOException;
+      final CachingStrategy cachingStrategy,
+      final String storageID,
+      final StorageType storageTypePreference) throws IOException;
 
   /**
    * Transfer a block to another datanode.
@@ -155,7 +158,9 @@ public interface DataTransferProtocol {
   public void replaceBlock(final ExtendedBlock blk,
       final Token<BlockTokenIdentifier> blockToken,
       final String delHint,
-      final DatanodeInfo source) throws IOException;
+      final DatanodeInfo source,
+      final String storageID,
+      final StorageType storageTypeReference) throws IOException;
 
   /**
    * Copy a block. 

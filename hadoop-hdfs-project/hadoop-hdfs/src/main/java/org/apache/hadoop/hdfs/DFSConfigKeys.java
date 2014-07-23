@@ -633,4 +633,8 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final int DEFAULT_DFSCLIENT_HEDGED_READ_THREADPOOL_SIZE = 0;
   public static final String DFS_NFS_KEYTAB_FILE_KEY = "dfs.nfs.keytab.file";
   public static final String DFS_NFS_USER_NAME_KEY = "dfs.nfs.kerberos.principal";
+
+  //TieredStorageManager
+  public static final String  DFS_TIER_ENABLED = "dfs.tier.enabled";
+  public static final boolean DFS_TIER_ENABLED_DEFAULT = false;
 }

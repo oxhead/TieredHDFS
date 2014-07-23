@@ -19,6 +19,8 @@ package org.apache.hadoop.hdfs.server.blockmanagement;
 
 import java.util.LinkedList;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -35,6 +37,7 @@ import org.apache.hadoop.util.LightWeightGSet;
  */
 @InterfaceAudience.Private
 public class BlockInfo extends Block implements LightWeightGSet.LinkedElement {
+  static final Log LOG = LogFactory.getLog(BlockInfo.class);
   public static final BlockInfo[] EMPTY_ARRAY = {}; 
 
   private BlockCollection bc;

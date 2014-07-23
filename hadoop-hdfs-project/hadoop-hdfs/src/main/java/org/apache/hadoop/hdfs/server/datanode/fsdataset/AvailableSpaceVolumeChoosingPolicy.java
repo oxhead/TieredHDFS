@@ -31,6 +31,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.util.DiskChecker.DiskOutOfSpaceException;
 
 /**
@@ -149,6 +150,13 @@ public class AvailableSpaceVolumeChoosingPolicy<V extends FsVolumeSpi>
       }
       return volume;
     }
+  }
+  
+  @Override
+  public synchronized V chooseVolume(List<V> volumes,
+      final long replicaSize,
+      StorageType sotragePreference) throws IOException {
+	  return chooseVolume(volumes, replicaSize);
   }
   
   /**

@@ -91,6 +91,7 @@ import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport;
 import org.apache.hadoop.hdfs.protocol.SnapshottableDirectoryStatus;
 import org.apache.hadoop.hdfs.protocol.UnregisteredNodeException;
 import org.apache.hadoop.hdfs.protocol.UnresolvedPathException;
+import org.apache.hadoop.hdfs.protocol.Workload;
 import org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.ClientNamenodeProtocol;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.DatanodeProtocolService;
 import org.apache.hadoop.hdfs.protocol.proto.NamenodeProtocolProtos.NamenodeProtocolService;
@@ -1367,6 +1368,13 @@ class NameNodeRpcServer implements NamenodeProtocols {
   @Override
   public AclStatus getAclStatus(String src) throws IOException {
     return namesystem.getAclStatus(src);
+  }
+
+  @Override
+  public void workloadReport(DatanodeRegistration nodeReg,
+      List<Workload> workloads) throws IOException {
+	LOG.fatal("receiving trace from " + nodeReg.getHostName());
+    nn.tieredStorageManager.workloadReport(nodeReg, workloads);
   }
 }
 

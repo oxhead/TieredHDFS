@@ -20,6 +20,7 @@ package org.apache.hadoop.hdfs.server.datanode.fsdataset;
 import java.io.IOException;
 import java.util.List;
 
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.util.DiskChecker.DiskOutOfSpaceException;
 
 /**
@@ -63,4 +64,12 @@ public class RoundRobinVolumeChoosingPolicy<V extends FsVolumeSpi>
       }
     }
   }
+  
+  @Override
+  public synchronized V chooseVolume(final List<V> volumes,
+    final long blockSize,
+    final StorageType storagePreference) throws IOException {
+	  return chooseVolume(volumes, blockSize);
+  }
+  
 }

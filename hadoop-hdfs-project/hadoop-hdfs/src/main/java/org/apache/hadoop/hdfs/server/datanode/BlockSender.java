@@ -709,6 +709,7 @@ class BlockSender implements java.io.Closeable {
         pktBufSize += (chunkSize + checksumSize) * maxChunksPerPacket;
       }
 
+      LOG.fatal("Sender buffer size=" + pktBufSize);
       ByteBuffer pktBuf = ByteBuffer.allocate(pktBufSize);
 
       while (endOffset > offset && !Thread.currentThread().isInterrupted()) {

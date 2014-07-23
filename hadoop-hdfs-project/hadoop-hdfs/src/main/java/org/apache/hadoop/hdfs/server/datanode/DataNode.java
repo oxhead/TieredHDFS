@@ -100,6 +100,9 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 import java.security.PrivilegedExceptionAction;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.hadoop.hdfs.DFSConfigKeys.*;
@@ -235,6 +238,9 @@ public class DataNode extends Configured
   private String supergroup;
   private boolean isPermissionEnabled;
   private String dnUserName = null;
+
+  private ScheduledExecutorService workloadCollectorService;
+  WorkloadCollector workloadCollector;
 
   /**
    * Create the DataNode given a configuration, an array of dataDirs,
@@ -790,6 +796,28 @@ public class DataNode extends Configured
     // Create the ReadaheadPool from the DataNode context so we can
     // exit without having to explicitly shutdown its thread pool.
     readaheadPool = ReadaheadPool.getInstance();
+
+    // start report service
+    if (conf.getBoolean(DFSConfigKeys.DFS_TIER_ENABLED, DFSConfigKeys.DFS_TIER_ENABLED_DEFAULT)) {
+      workloadCollector = new WorkloadCollector();
+      workloadCollector.initialize();
+      workloadCollectorService = Executors.newScheduledThreadPool(1);
+      workloadCollectorService.scheduleAtFixedRate(new Runnable() {
+
+          @Override
+	  public void run() {
+	    List<Workload> workloads = workloadCollector.pollWorkloads();
+	    for (BPOfferService bpos : DataNode.this.getAllBpOs()) {
+          try {
+            bpos.getActiveNN().workloadReport(bpos.bpRegistration, workloads);
+	      } catch (IOException e) {
+            LOG.fatal("Unable to report workload", e);
+	      }
+	    }
+          }
+      }, 60, 15, TimeUnit.SECONDS);
+    }
+
   }
   
   public static String generateUuid() {
@@ -1841,6 +1869,10 @@ public class DataNode extends Configured
       }
 
       locations.add(location);
+    }
+    
+    for (StorageLocation s : locations) {
+    	System.out.println(s.toString());
     }
 
     return locations;

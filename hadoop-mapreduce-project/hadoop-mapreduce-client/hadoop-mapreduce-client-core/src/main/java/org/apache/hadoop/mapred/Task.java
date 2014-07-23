@@ -514,6 +514,7 @@ abstract public class Task implements Writable, Configurable {
    * Localize the given JobConf to be specific for this task.
    */
   public void localizeConfiguration(JobConf conf) throws IOException {
+	LOG.fatal("setting=" + taskId.toString());
     conf.set(JobContext.TASK_ID, taskId.getTaskID().toString()); 
     conf.set(JobContext.TASK_ATTEMPT_ID, taskId.toString());
     conf.setBoolean(JobContext.TASK_ISMAP, isMapTask());

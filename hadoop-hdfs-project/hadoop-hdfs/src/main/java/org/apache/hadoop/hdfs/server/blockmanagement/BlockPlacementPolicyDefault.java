@@ -599,7 +599,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
                                List<DatanodeStorageInfo> results,
                                boolean avoidStaleNodes,
                                StorageType storageType) {
-    if (storage.getStorageType() != storageType) {
+    if (!storageType.equals(StorageType.ANY) && storage.getStorageType() != storageType) {
       logNodeIsNotChosen(storage,
           "storage types do not match, where the expected storage type is "
               + storageType);
@@ -644,7 +644,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
         return false;
       }
     }
-      
+    
     // check if the target rack has chosen too many nodes
     String rackname = node.getNetworkLocation();
     int counter=1;

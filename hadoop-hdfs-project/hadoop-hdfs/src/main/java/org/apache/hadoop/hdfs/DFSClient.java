@@ -294,6 +294,8 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory {
     final long shortCircuitMmapCacheRetryTimeout;
     final long shortCircuitCacheStaleThresholdMs;
 
+    final String jobName;
+
     public Conf(Configuration conf) {
       // The hdfsTimeout is currently the same as the ipc timeout 
       hdfsTimeout = Client.getTimeout(conf);
@@ -430,6 +432,9 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory {
       datanodeRestartTimeout = conf.getLong(
           DFS_CLIENT_DATANODE_RESTART_TIMEOUT_KEY,
           DFS_CLIENT_DATANODE_RESTART_TIMEOUT_DEFAULT) * 1000;
+
+      // hack to get jot name
+      jobName = conf.get("mapreduce.job.name");
     }
 
     private DataChecksum.Type getChecksumType(Configuration conf) {
@@ -549,7 +554,8 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory {
     this.ugi = UserGroupInformation.getCurrentUser();
     
     this.authority = nameNodeUri == null? "null": nameNodeUri.getAuthority();
-    this.clientName = "DFSClient_" + dfsClientConf.taskId + "_" + 
+    LOG.fatal("conf=" + this.conf.getClass());
+    this.clientName = "DFSClient_" + dfsClientConf.jobName + "_" + dfsClientConf.taskId + "_" + 
         DFSUtil.getRandom().nextInt()  + "_" + Thread.currentThread().getId();
     
     int numResponseToDrop = conf.getInt(

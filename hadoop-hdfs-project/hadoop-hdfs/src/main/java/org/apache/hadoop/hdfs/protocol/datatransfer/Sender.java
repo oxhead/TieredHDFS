@@ -26,6 +26,7 @@ import java.io.IOException;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.hdfs.ShortCircuitShm.SlotId;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ChecksumProto;
@@ -108,8 +109,6 @@ public class Sender implements DataTransferProtocol {
     send(out, Op.READ_BLOCK, proto);
   }
   
-
-  @Override
   public void writeBlock(final ExtendedBlock blk,
       final Token<BlockTokenIdentifier> blockToken,
       final String clientName,
@@ -122,6 +121,23 @@ public class Sender implements DataTransferProtocol {
       final long latestGenerationStamp,
       DataChecksum requestedChecksum,
       final CachingStrategy cachingStrategy) throws IOException {
+	  writeBlock(blk, blockToken, clientName, targets, source, stage, pipelineSize, minBytesRcvd, maxBytesRcvd, latestGenerationStamp, requestedChecksum, cachingStrategy, "", StorageType.ANY);
+  }
+  @Override
+  public void writeBlock(final ExtendedBlock blk,
+      final Token<BlockTokenIdentifier> blockToken,
+      final String clientName,
+      final DatanodeInfo[] targets,
+      final DatanodeInfo source,
+      final BlockConstructionStage stage,
+      final int pipelineSize,
+      final long minBytesRcvd,
+      final long maxBytesRcvd,
+      final long latestGenerationStamp,
+      DataChecksum requestedChecksum,
+      final CachingStrategy cachingStrategy,
+      final String storageID,
+      final StorageType storageTypePreference) throws IOException {
     ClientOperationHeaderProto header = DataTransferProtoUtil.buildClientHeader(
         blk, clientName, blockToken);
     
@@ -137,7 +153,9 @@ public class Sender implements DataTransferProtocol {
       .setMaxBytesRcvd(maxBytesRcvd)
       .setLatestGenerationStamp(latestGenerationStamp)
       .setRequestedChecksum(checksumProto)
-      .setCachingStrategy(getCachingStrategy(cachingStrategy));
+      .setCachingStrategy(getCachingStrategy(cachingStrategy))
+      .setStorageID(storageID == null ? "" : storageID)
+      .setStorageTypePreference(PBHelper.convertStorageType(storageTypePreference == null ? StorageType.ANY : storageTypePreference));
     
     if (source != null) {
       proto.setSource(PBHelper.convertDatanodeInfo(source));
@@ -198,11 +216,15 @@ public class Sender implements DataTransferProtocol {
   public void replaceBlock(final ExtendedBlock blk,
       final Token<BlockTokenIdentifier> blockToken,
       final String delHint,
-      final DatanodeInfo source) throws IOException {
+      final DatanodeInfo source,
+      final String storageID,
+      final StorageType storageTypePreference) throws IOException {
     OpReplaceBlockProto proto = OpReplaceBlockProto.newBuilder()
       .setHeader(DataTransferProtoUtil.buildBaseHeader(blk, blockToken))
       .setDelHint(delHint)
       .setSource(PBHelper.convertDatanodeInfo(source))
+      .setStorageID(storageID)
+      .setStorageTypePreference(PBHelper.convertStorageType(storageTypePreference))
       .build();
     
     send(out, Op.REPLACE_BLOCK, proto);

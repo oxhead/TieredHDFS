@@ -49,6 +49,7 @@ import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.DefaultCodec;
 import org.apache.hadoop.mapred.SortedRanges.SkipRangeIterator;
 import org.apache.hadoop.mapreduce.MRConfig;
+import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskCounter;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormatCounter;
@@ -385,6 +386,9 @@ public class ReduceTask extends Task {
     Class valueClass = job.getMapOutputValueClass();
     RawComparator comparator = job.getOutputValueGroupingComparator();
 
+    LOG.fatal("& jobName=" + job.get("mapreduce.job.name"));
+    LOG.fatal("& taskId=" + job.get("mapreduce.task.attempt.id"));
+
     if (useNewApi) {
       runNewReducer(job, umbilical, reporter, rIter, comparator, 
                     keyClass, valueClass);
@@ -623,6 +627,10 @@ public class ReduceTask extends Task {
                                                committer,
                                                reporter, comparator, keyClass,
                                                valueClass);
+    LOG.fatal("+ jobName" + taskContext.getConfiguration().get("mapreduce.job.name"));
+    LOG.fatal("+ taskID=" + taskContext.getConfiguration().get("mapreduce.task.attempt.id"));
+    LOG.fatal("$ jobName" + job.get("mapreduce.job.name"));
+    LOG.fatal("$ taskID=" + job.get("mapreduce.task.attempt.id"));
     try {
       reducer.run(reducerContext);
     } finally {

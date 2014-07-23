@@ -28,10 +28,12 @@ import java.util.Map;
 import java.util.Queue;
 
 import com.google.common.annotations.VisibleForTesting;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -260,6 +262,18 @@ public class DatanodeDescriptor extends DatanodeInfo {
       return storages.toArray(new DatanodeStorageInfo[storages.size()]);
     }
   }
+  DatanodeStorageInfo[] getStorageInfos(StorageType storageType) {
+    synchronized (storageMap) {
+      final Collection<DatanodeStorageInfo> storages = storageMap.values();
+      List<DatanodeStorageInfo> pickedStorages = new LinkedList<DatanodeStorageInfo>();
+      for (DatanodeStorageInfo dsInfo : storages) {
+        if (dsInfo.getStorageType().equals(storageType)) {
+          pickedStorages.add(dsInfo);
+        }
+      }
+      return pickedStorages.toArray(new DatanodeStorageInfo[pickedStorages.size()]);
+    }
+  }
 
   boolean hasStaleStorages() {
     synchronized (storageMap) {
@@ -354,6 +368,16 @@ public class DatanodeDescriptor extends DatanodeInfo {
     return blocks;
   }
 
+  public int numBlocks(StorageType storageType) {
+    int blocks = 0;
+    for (DatanodeStorageInfo entry : getStorageInfos()) {
+      if (entry.getStorageType().equals(storageType)) {
+        blocks += entry.numBlocks();
+      }
+    }
+    return blocks;
+  }
+
   /**
    * Updates stats from datanode heartbeat.
    */
@@ -427,6 +451,9 @@ public class DatanodeDescriptor extends DatanodeInfo {
   }
   Iterator<BlockInfo> getBlockIterator(final String storageID) {
     return new BlockIterator(getStorageInfo(storageID));
+  }
+  Iterator<BlockInfo> getBlockIterator(StorageType storageType) {
+	return new BlockIterator(getStorageInfos(storageType));
   }
 
   /**

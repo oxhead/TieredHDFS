@@ -43,9 +43,12 @@ import org.apache.hadoop.util.DiskChecker.DiskOutOfSpaceException;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.Time;
 
+import com.google.common.io.Files;
+
 import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectName;
 import javax.management.StandardMBean;
+
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -402,7 +405,8 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
    * @throws ReplicaNotFoundException if no entry is in the map or 
    *                        there is a generation stamp mismatch
    */
-  ReplicaInfo getReplicaInfo(ExtendedBlock b)
+  @Override // FsDatasetSpi
+  public ReplicaInfo getReplicaInfo(ExtendedBlock b)
       throws ReplicaNotFoundException {
     ReplicaInfo info = volumeMap.get(b.getBlockPoolId(), b.getLocalBlock());
     if (info == null) {
@@ -736,9 +740,16 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
                             " to " + newmeta, e);
     }
   }
-
+  
   @Override // FsDatasetSpi
   public synchronized ReplicaInPipeline createRbw(ExtendedBlock b)
+      throws IOException {
+	return createRbw(b, StorageType.ANY);
+  }
+  
+  @Override // FsDatasetSpi
+  public synchronized ReplicaInPipeline createRbw(ExtendedBlock b,
+    StorageType storageType)
       throws IOException {
     ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), 
         b.getBlockId());
@@ -748,13 +759,33 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
       " and thus cannot be created.");
     }
     // create a new block
-    FsVolumeImpl v = volumes.getNextVolume(b.getNumBytes());
+    FsVolumeImpl v = volumes.getNextVolume(b.getNumBytes(), storageType);
     // create a rbw file to hold block in the designated volume
     File f = v.createRbwFile(b.getBlockPoolId(), b.getLocalBlock());
     ReplicaBeingWritten newReplicaInfo = new ReplicaBeingWritten(b.getBlockId(), 
         b.getGenerationStamp(), v, f.getParentFile());
     volumeMap.add(b.getBlockPoolId(), newReplicaInfo);
     return newReplicaInfo;
+  }
+  
+  @Override // FsDatasetSpi
+  public synchronized ReplicaInPipeline createRbw(ExtendedBlock b,
+    String storageID) throws IOException {
+	    ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), 
+	        b.getBlockId());
+	    if (replicaInfo != null) {
+	      throw new ReplicaAlreadyExistsException("Block " + b +
+	      " already exists in state " + replicaInfo.getState() +
+	      " and thus cannot be created.");
+	    }
+	    // create a new block
+	    FsVolumeImpl v = volumes.getVolume(b.getNumBytes(), storageID);
+	    // create a rbw file to hold block in the designated volume
+	    File f = v.createRbwFile(b.getBlockPoolId(), b.getLocalBlock());
+	    ReplicaBeingWritten newReplicaInfo = new ReplicaBeingWritten(b.getBlockId(), 
+	        b.getGenerationStamp(), v, f.getParentFile());
+	    volumeMap.add(b.getBlockPoolId(), newReplicaInfo);
+	    return newReplicaInfo;
   }
   
   @Override // FsDatasetSpi
@@ -878,6 +909,13 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
   @Override // FsDatasetSpi
   public synchronized ReplicaInPipeline createTemporary(ExtendedBlock b)
       throws IOException {
+	return createTemporary(b, StorageType.ANY);
+  }
+  
+  @Override // FsDatasetSpi
+  public synchronized ReplicaInPipeline createTemporary(ExtendedBlock b,
+    StorageType storagePreference)
+      throws IOException {
     ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), b.getBlockId());
     if (replicaInfo != null) {
       throw new ReplicaAlreadyExistsException("Block " + b +
@@ -885,7 +923,28 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
           " and thus cannot be created.");
     }
     
-    FsVolumeImpl v = volumes.getNextVolume(b.getNumBytes());
+    FsVolumeImpl v = volumes.getNextVolume(b.getNumBytes(), storagePreference);
+    // create a temporary file to hold block in the designated volume
+    File f = v.createTmpFile(b.getBlockPoolId(), b.getLocalBlock());
+    ReplicaInPipeline newReplicaInfo = new ReplicaInPipeline(b.getBlockId(), 
+        b.getGenerationStamp(), v, f.getParentFile());
+    volumeMap.add(b.getBlockPoolId(), newReplicaInfo);
+    
+    return newReplicaInfo;
+  }
+  
+  @Override // FsDatasetSpi
+  public synchronized ReplicaInPipeline createTemporary(ExtendedBlock b,
+    String storageID)
+      throws IOException {
+    ReplicaInfo replicaInfo = volumeMap.get(b.getBlockPoolId(), b.getBlockId());
+    if (replicaInfo != null) {
+      throw new ReplicaAlreadyExistsException("Block " + b +
+          " already exists in state " + replicaInfo.getState() +
+          " and thus cannot be created.");
+    }
+    
+    FsVolumeImpl v = volumes.getVolume(b.getNumBytes(), storageID);
     // create a temporary file to hold block in the designated volume
     File f = v.createTmpFile(b.getBlockPoolId(), b.getLocalBlock());
     ReplicaInPipeline newReplicaInfo = new ReplicaInPipeline(b.getBlockId(), 
@@ -1909,5 +1968,34 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
     }
     return new RollingLogsImpl(dir, prefix);
   }
+
+  @Override
+  public String move(ExtendedBlock block, String storageID) throws IOException {
+    ReplicaInfo replica = fetchReplicaInfo(block.getBlockPoolId(), block.getBlockId()); 
+    volumeMap.remove(block.getBlockPoolId(), block.getLocalBlock());
+
+    ReplicaInPipeline tempReplica = createTemporary(block, storageID);
+    copyReplica(replica, tempReplica);
+    tempReplica.setNumBytes(replica.getNumBytes());
+    tempReplica.setGenerationStamp(replica.getGenerationStamp());
+    finalizeBlock(block);
+    
+    if (replica.getBlockFile() != null && replica.getBlockFile().exists()) {
+      replica.getBlockFile().delete();
+    }
+    if (replica.getMetaFile() != null && replica.getMetaFile().exists()) {
+      replica.getMetaFile().delete();
+    }
+    DatanodeStorage fromStorage = this.getStorage(replica.getStorageUuid());
+    DatanodeStorage toStorage = this.getStorage(tempReplica.getStorageUuid());
+    LOG.fatal("Move " + block + " from " + fromStorage.getStorageID() + ":" + fromStorage.getStorageType() + " to " + toStorage.getStorageID() + ":" + toStorage.getStorageType() );
+    return replica.getStorageUuid();
+  }
+
+  private void copyReplica(ReplicaInfo src, ReplicaInfo dest) throws IOException {
+	Files.copy(src.getBlockFile(), dest.getBlockFile());
+	Files.copy(src.getMetaFile(), dest.getMetaFile());
+  }
+
 }
 

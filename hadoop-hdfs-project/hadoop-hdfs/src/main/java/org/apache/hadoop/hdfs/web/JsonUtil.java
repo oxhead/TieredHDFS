@@ -22,6 +22,7 @@ import org.apache.hadoop.fs.permission.AclEntry;
 import org.apache.hadoop.fs.permission.AclStatus;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DFSUtil;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.*;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo.AdminStates;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
@@ -398,6 +399,24 @@ public class JsonUtil {
         AdminStates.valueOf(getString(m, "adminState", "NORMAL")));
   }
 
+  private static Object[] toJsonArray(final LocatedBlock block) {
+    if (block == null) {
+	  return null;
+	} else {
+	  int size = block.getStorageIDs().length;
+	  final Object[] a = new Object[size];
+	  for(int i = 0; i < size; i++) {
+		final Map<String, Object> m = new TreeMap<String, Object>();
+		m.put("nodeHost", block.getLocations()[i].getHostName());
+		m.put("nodeID", block.getLocations()[i].getDatanodeUuid());
+		m.put("storageID", block.getStorageIDs()[i]);
+		m.put("storageType", block.getStorageTypes()[i].toString());
+	    a[i] = m;
+      }
+	  return a;
+    }
+  }
+
   /** Convert a DatanodeInfo[] to a Json array. */
   private static Object[] toJsonArray(final DatanodeInfo[] array) {
     if (array == null) {
@@ -428,7 +447,7 @@ public class JsonUtil {
       return array;
     }
   }
-  
+
   /** Convert a LocatedBlock to a Json map. */
   private static Map<String, Object> toJsonMap(final LocatedBlock locatedblock
       ) throws IOException {
@@ -443,6 +462,7 @@ public class JsonUtil {
     m.put("block", toJsonMap(locatedblock.getBlock()));
     m.put("locations", toJsonArray(locatedblock.getLocations()));
     m.put("cachedLocations", toJsonArray(locatedblock.getCachedLocations()));
+    m.put("storedLocations", toJsonArray(locatedblock));
     return m;
   }
 

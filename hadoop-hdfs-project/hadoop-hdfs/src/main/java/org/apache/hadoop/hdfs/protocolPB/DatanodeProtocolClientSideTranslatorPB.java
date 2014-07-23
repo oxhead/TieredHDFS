@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -35,6 +37,7 @@ import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeStatus;
+import org.apache.hadoop.hdfs.protocol.Workload;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReceivedAndDeletedRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReportRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReportResponseProto;
@@ -50,7 +53,10 @@ import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.RegisterData
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.ReportBadBlocksRequestProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageBlockReportProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.StorageReceivedDeletedBlocksProto;
+import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.WorkloadReportRequestProto;
+import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.WorkloadReportResponseProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.VersionRequestProto;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicy;
 import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
@@ -85,7 +91,7 @@ import com.google.protobuf.ServiceException;
 @InterfaceStability.Stable
 public class DatanodeProtocolClientSideTranslatorPB implements
     ProtocolMetaInterface, DatanodeProtocol, Closeable {
-  
+	static final Log LOG = LogFactory.getLog(DatanodeProtocolClientSideTranslatorPB.class);
   /** RpcController is not used and hence is set to null */
   private final DatanodeProtocolPB rpcProxy;
   private static final VersionRequestProto VOID_VERSION_REQUEST = 
@@ -332,5 +338,23 @@ public class DatanodeProtocolClientSideTranslatorPB implements
     return RpcClientUtil.isMethodSupported(rpcProxy, DatanodeProtocolPB.class,
         RPC.RpcKind.RPC_PROTOCOL_BUFFER,
         RPC.getProtocolVersion(DatanodeProtocolPB.class), methodName);
+  }
+
+  @Override
+  public void workloadReport(DatanodeRegistration registration,
+      List<Workload> workloads) throws IOException {
+    WorkloadReportRequestProto.Builder builder =
+        WorkloadReportRequestProto.newBuilder()
+	.setRegistartion(PBHelper.convert(registration));
+    
+    for (Workload workload : workloads) {
+      builder.addWorkloads(PBHelper.convert(workload));
+    }
+
+    try {
+      WorkloadReportResponseProto r = rpcProxy.workloadReport(NULL_CONTROLLER, builder.build());
+    } catch (ServiceException se) {
+      throw ProtobufHelper.getRemoteException(se);
+    }
   }
 }

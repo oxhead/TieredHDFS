@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.hdfs.StorageType;
 
 /**
  * This interface specifies the policy for choosing volumes to store replicas.
@@ -40,4 +41,7 @@ public interface VolumeChoosingPolicy<V extends FsVolumeSpi> {
    * @throws IOException when disks are unavailable or are full.
    */
   public V chooseVolume(List<V> volumes, long replicaSize) throws IOException;
+  
+  public V chooseVolume(List<V> volumes, long replicaSize, StorageType storagePreference) throws IOException;
+  
 }

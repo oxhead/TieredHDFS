@@ -132,6 +132,7 @@ message FsPermissionProto {
  * Types of recognized storage media.
  */
 enum StorageTypeProto {
+  ANY = 0;
   DISK = 1;
   SSD = 2;
 }
@@ -479,4 +480,15 @@ message SnapshotInfoProto {
  */
 message RollingUpgradeStatusProto {
   required string blockPoolId = 1;
+}
+
+message WorkloadProto {
+	required ExtendedBlockProto block = 1;
+	required string storageUuid = 2;
+	required StorageTypeProto storageType = 3;
+	required uint64 timestamp = 4;
+	required uint64 elapsedTime = 5;
+	required uint64 offset = 6;
+	required uint64 length = 7;
+	required string clientName = 8;
 }

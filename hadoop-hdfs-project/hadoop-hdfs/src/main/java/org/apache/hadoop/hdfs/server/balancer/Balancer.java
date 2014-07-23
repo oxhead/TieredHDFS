@@ -56,6 +56,7 @@ import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
@@ -398,7 +399,7 @@ public class Balancer {
       final ExtendedBlock eb = new ExtendedBlock(nnc.blockpoolID, block.getBlock());
       final Token<BlockTokenIdentifier> accessToken = nnc.getAccessToken(eb);
       new Sender(out).replaceBlock(eb, accessToken,
-          source.getStorageID(), proxySource.getDatanode());
+          source.getStorageID(), proxySource.getDatanode(), "", StorageType.ANY);
     }
     
     /* Receive a block copy response from the input stream */ 

@@ -47,7 +47,9 @@ import java.util.Arrays;
 import org.apache.commons.logging.Log;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
 import org.apache.hadoop.hdfs.ShortCircuitShm.SlotId;
+import org.apache.hadoop.hdfs.StorageType;
 import org.apache.hadoop.hdfs.net.Peer;
+import org.apache.hadoop.hdfs.protocol.BlockLocalPathInfo;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
@@ -75,6 +77,7 @@ import org.apache.hadoop.hdfs.server.datanode.DataNode.ShortCircuitFdsVersionExc
 import org.apache.hadoop.hdfs.server.datanode.ShortCircuitRegistry.NewShmInfo;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.LengthInputStream;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
+import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.MD5Hash;
 import org.apache.hadoop.net.NetUtils;
@@ -503,7 +506,15 @@ class DataXceiver extends Receiver implements Runnable {
       // send op status
       writeSuccessWithChecksumInfo(blockSender, new DataOutputStream(getOutputStream()));
 
+      long timestamp = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       long read = blockSender.sendBlock(out, baseStream, null); // send data
+      long elapsedTime = System.nanoTime() - startTime;
+      ReplicaInfo replica = this.datanode.getFSDataset().getReplicaInfo(block);
+      DatanodeStorage storage = this.datanode.getFSDataset().getStorage(replica.getStorageUuid());
+      //workload collector
+      LOG.fatal("reader src client=" + clientName);
+      this.datanode.workloadCollector.reportReadOperation(this.datanode.getDatanodeUuid(), storage.getStorageID(), storage.getStorageType(), block, blockOffset, length, clientName, remoteAddress, timestamp, elapsedTime);
 
       if (blockSender.didSendEntireByteRange()) {
         // If we sent the entire range, then we should expect the client
@@ -562,14 +573,16 @@ class DataXceiver extends Receiver implements Runnable {
       final long maxBytesRcvd,
       final long latestGenerationStamp,
       DataChecksum requestedChecksum,
-      CachingStrategy cachingStrategy) throws IOException {
+      CachingStrategy cachingStrategy,
+      String storageID,
+      StorageType storageTypePreference) throws IOException {
     previousOpClientName = clientname;
     updateCurrentThreadName("Receiving block " + block);
     final boolean isDatanode = clientname.length() == 0;
     final boolean isClient = !isDatanode;
     final boolean isTransfer = stage == BlockConstructionStage.TRANSFER_RBW
         || stage == BlockConstructionStage.TRANSFER_FINALIZED;
-
+    LOG.fatal("writer src client=" + clientname);
     // check single target for transfer-RBW/Finalized 
     if (isTransfer && targets.length > 0) {
       throw new IOException(stage + " does not support multiple targets "
@@ -623,7 +636,7 @@ class DataXceiver extends Receiver implements Runnable {
             peer.getLocalAddressString(),
             stage, latestGenerationStamp, minBytesRcvd, maxBytesRcvd,
             clientname, srcDataNode, datanode, requestedChecksum,
-            cachingStrategy);
+            cachingStrategy, storageID, storageTypePreference);
         storageUuid = blockReceiver.getStorageUuid();
       } else {
         storageUuid = datanode.data.recoverClose(
@@ -736,9 +749,12 @@ class DataXceiver extends Receiver implements Runnable {
       // receive the block and mirror to the next target
       if (blockReceiver != null) {
         String mirrorAddr = (mirrorSock == null) ? null : mirrorNode;
-        blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut,
+        long timestamp = System.currentTimeMillis();
+        long startTime = System.nanoTime();
+        long receivedBytes = blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut,
             mirrorAddr, null, targets);
-
+        long elapsedTime = System.nanoTime() - startTime;
+        LOG.fatal("[write] " + block + ", min=" + minBytesRcvd + ", max=" + maxBytesRcvd + ", storageID" + storageID + ", elapsedTime=" + elapsedTime);
         // send close-ack for transfer-RBW/Finalized 
         if (isTransfer) {
           if (LOG.isTraceEnabled()) {
@@ -933,9 +949,10 @@ class DataXceiver extends Receiver implements Runnable {
   public void replaceBlock(final ExtendedBlock block,
       final Token<BlockTokenIdentifier> blockToken,
       final String delHint,
-      final DatanodeInfo proxySource) throws IOException {
+      final DatanodeInfo proxySource,
+      final String storageId,
+      final StorageType storageTypeReference) throws IOException {
     updateCurrentThreadName("Replacing block " + block + " from " + delHint);
-
     /* read header */
     block.setNumBytes(dataXceiverServer.estimateBlockSize);
     if (datanode.isBlockTokenEnabled) {
@@ -998,14 +1015,17 @@ class DataXceiver extends Receiver implements Runnable {
       proxyReply = new DataInputStream(new BufferedInputStream(unbufProxyIn,
           HdfsConstants.IO_FILE_BUFFER_SIZE));
 
+      if (proxySource.getDatanodeUuid().equals(datanode.getDatanodeUuid())) {
+    	// check successul operation?
+        datanode.data.move(block, storageId);
+        datanode.notifyNamenodeReceivedBlock(block, delHint, storageId);
+      } else {
       /* send request to the proxy */
       new Sender(proxyOut).copyBlock(block, blockToken);
-
       // receive the response from the proxy
       
       BlockOpResponseProto copyResponse = BlockOpResponseProto.parseFrom(
           PBHelper.vintPrefixed(proxyReply));
-
       if (copyResponse.getStatus() != SUCCESS) {
         if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
           throw new IOException("Copy block " + block + " from "
@@ -1020,24 +1040,23 @@ class DataXceiver extends Receiver implements Runnable {
       ReadOpChecksumInfoProto checksumInfo = copyResponse.getReadOpChecksumInfo();
       DataChecksum remoteChecksum = DataTransferProtoUtil.fromProto(
           checksumInfo.getChecksum());
+
       // open a block receiver and check if the block does not exist
       blockReceiver = new BlockReceiver(
           block, proxyReply, proxySock.getRemoteSocketAddress().toString(),
           proxySock.getLocalSocketAddress().toString(),
           null, 0, 0, 0, "", null, datanode, remoteChecksum,
-          CachingStrategy.newDropBehind());
-
+          CachingStrategy.newDropBehind(),
+          storageId, storageTypeReference);
       // receive a block
       blockReceiver.receiveBlock(null, null, null, null, 
           dataXceiverServer.balanceThrottler, null);
-                    
       // notify name node
       datanode.notifyNamenodeReceivedBlock(
           block, delHint, blockReceiver.getStorageUuid());
-
       LOG.info("Moved " + block + " from " + peer.getRemoteAddressString()
           + ", delHint=" + delHint);
-      
+      }
     } catch (IOException ioe) {
       opStatus = ERROR;
       errMsg = "opReplaceBlock " + block + " received exception " + ioe; 
@@ -1149,4 +1168,5 @@ class DataXceiver extends Receiver implements Runnable {
       }
     }
   }
+
 }

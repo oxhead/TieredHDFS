@@ -40,6 +40,7 @@ import org.apache.hadoop.hdfs.HAUtil;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
+import org.apache.hadoop.hdfs.server.blockmanagement.TieredStorageManager;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.NamenodeRole;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.RollingUpgradeStartupOption;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.StartupOption;
@@ -276,6 +277,10 @@ public class NameNode implements NameNodeStatusMXBean {
    */
   private String clientNamenodeAddress;
   
+  private String tokenServiceName;
+
+  protected TieredStorageManager tieredStorageManager;
+
   /** Format a new filesystem.  Destroys any filesystem that may already
    * exist at this location.  **/
   public static void format(Configuration conf) throws IOException {
@@ -575,6 +580,11 @@ public class NameNode implements NameNodeStatusMXBean {
     pauseMonitor = new JvmPauseMonitor(conf);
     pauseMonitor.start();
 
+    if (conf.getBoolean(DFS_TIER_ENABLED, false)) {
+      tieredStorageManager = new TieredStorageManager(conf, this.namesystem.getBlockManager(), this.namesystem);
+      tieredStorageManager.start();
+    }
+
     startCommonServices(conf);
   }
   
@@ -788,6 +798,9 @@ public class NameNode implements NameNodeStatusMXBean {
       if (nameNodeStatusBeanName != null) {
         MBeans.unregister(nameNodeStatusBeanName);
         nameNodeStatusBeanName = null;
+      }
+      if (conf.getBoolean(DFS_TIER_ENABLED, false)) {
+        tieredStorageManager.stop();
       }
     }
   }

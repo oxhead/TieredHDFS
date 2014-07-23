@@ -369,6 +369,14 @@ message CommitBlockSynchronizationRequestProto {
 message CommitBlockSynchronizationResponseProto {
 }
 
+message WorkloadReportRequestProto {
+  required DatanodeRegistrationProto registartion = 1;
+  repeated WorkloadProto workloads = 2;
+}
+
+message WorkloadReportResponseProto {
+}
+
 /**
  * Protocol used from datanode to the namenode
  * See the request and response for details of rpc call.
@@ -424,4 +432,6 @@ service DatanodeProtocolService {
    */
   rpc commitBlockSynchronization(CommitBlockSynchronizationRequestProto)
       returns(CommitBlockSynchronizationResponseProto);
+
+  rpc workloadReport(WorkloadReportRequestProto) returns(WorkloadReportResponseProto);
 }
