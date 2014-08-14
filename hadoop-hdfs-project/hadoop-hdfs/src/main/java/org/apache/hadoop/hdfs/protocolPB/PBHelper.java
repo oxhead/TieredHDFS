@@ -73,6 +73,7 @@ import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport.DiffReportEntry;
 import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport.DiffType;
 import org.apache.hadoop.hdfs.protocol.SnapshottableDirectoryStatus;
 import org.apache.hadoop.hdfs.protocol.Workload;
+import org.apache.hadoop.hdfs.protocol.Workload.Type;
 import org.apache.hadoop.hdfs.protocol.proto.AclProtos.AclEntryProto;
 import org.apache.hadoop.hdfs.protocol.proto.AclProtos.AclEntryProto.AclEntryScopeProto;
 import org.apache.hadoop.hdfs.protocol.proto.AclProtos.AclEntryProto.AclEntryTypeProto;
@@ -152,6 +153,7 @@ import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.StorageInfoProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.StorageTypeProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.StorageUuidsProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.WorkloadProto;
+import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.WorkloadTypeProto;
 import org.apache.hadoop.hdfs.protocol.proto.JournalProtocolProtos.JournalInfoProto;
 import org.apache.hadoop.hdfs.security.token.block.BlockKey;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
@@ -2090,6 +2092,8 @@ public class PBHelper {
 
   public static Workload convert(WorkloadProto p) {
     return new Workload(
+        PBHelper.convertWorkloadType(p.getWorkloadType()),
+        p.getDatanodeUuid(),
         PBHelper.convert(p.getBlock()),
         p.getStorageUuid(),
         PBHelper.convertType(p.getStorageType()),
@@ -2102,6 +2106,8 @@ public class PBHelper {
 
   public static WorkloadProto convert(Workload workload) {
     WorkloadProto.Builder builder = WorkloadProto.newBuilder();
+    builder.setWorkloadType(PBHelper.convertWorkloadType(workload.getType()));
+    builder.setDatanodeUuid(workload.getDatanodeUuid());
     builder.setBlock(PBHelper.convert(workload.getBlock()));
     builder.setStorageUuid(workload.getStorageUuid());
     builder.setStorageType(PBHelper.convertStorageType(workload.getStorageType()));
@@ -2112,5 +2118,31 @@ public class PBHelper {
     builder.setClientName(workload.getClientName());
 	return builder.build();
   }
+  
+  
+  public static WorkloadTypeProto convertWorkloadType(Workload.Type type) {
+    switch(type) {
+	  case READ:
+	    return WorkloadTypeProto.READ;
+	  case WRITE:
+	    return WorkloadTypeProto.WRITE;
+	  default:
+	    throw new IllegalStateException(
+	        "BUG: StorageType not found, type=" + type);
+	}
+  }
+  
+  public static Workload.Type convertWorkloadType(WorkloadTypeProto type) {
+    switch(type) {
+      case READ:
+	    return Workload.Type.READ;
+	  case WRITE:
+		return Workload.Type.WRITE;
+	  default:
+	    throw new IllegalStateException(
+		    "BUG: StorageType not found, type=" + type);
+	}
+  }
+  
 }
 

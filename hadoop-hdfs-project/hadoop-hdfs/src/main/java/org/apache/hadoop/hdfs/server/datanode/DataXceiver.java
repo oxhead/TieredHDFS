@@ -513,7 +513,6 @@ class DataXceiver extends Receiver implements Runnable {
       ReplicaInfo replica = this.datanode.getFSDataset().getReplicaInfo(block);
       DatanodeStorage storage = this.datanode.getFSDataset().getStorage(replica.getStorageUuid());
       //workload collector
-      LOG.fatal("reader src client=" + clientName);
       this.datanode.workloadCollector.reportReadOperation(this.datanode.getDatanodeUuid(), storage.getStorageID(), storage.getStorageType(), block, blockOffset, length, clientName, remoteAddress, timestamp, elapsedTime);
 
       if (blockSender.didSendEntireByteRange()) {
@@ -754,7 +753,10 @@ class DataXceiver extends Receiver implements Runnable {
         long receivedBytes = blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut,
             mirrorAddr, null, targets);
         long elapsedTime = System.nanoTime() - startTime;
-        LOG.fatal("[write] " + block + ", min=" + minBytesRcvd + ", max=" + maxBytesRcvd + ", storageID" + storageID + ", elapsedTime=" + elapsedTime);
+        ReplicaInfo replica = this.datanode.getFSDataset().getReplicaInfo(block);
+        DatanodeStorage storage = this.datanode.getFSDataset().getStorage(replica.getStorageUuid());
+        this.datanode.workloadCollector.reportWriteOperation(this.datanode.getDatanodeUuid(), storage.getStorageID(), storage.getStorageType(), block, 0, receivedBytes, clientname, remoteAddress, timestamp, elapsedTime);
+        
         // send close-ack for transfer-RBW/Finalized 
         if (isTransfer) {
           if (LOG.isTraceEnabled()) {

@@ -241,6 +241,7 @@ public class DataNode extends Configured
 
   private ScheduledExecutorService workloadCollectorService;
   WorkloadCollector workloadCollector;
+  private boolean isTierEnabled;
 
   /**
    * Create the DataNode given a configuration, an array of dataDirs,
@@ -799,6 +800,7 @@ public class DataNode extends Configured
 
     // start report service
     if (conf.getBoolean(DFSConfigKeys.DFS_TIER_ENABLED, DFSConfigKeys.DFS_TIER_ENABLED_DEFAULT)) {
+      isTierEnabled = true;
       workloadCollector = new WorkloadCollector();
       workloadCollector.initialize();
       workloadCollectorService = Executors.newScheduledThreadPool(1);
@@ -2674,5 +2676,13 @@ public class DataNode extends Configured
 
   public ShortCircuitRegistry getShortCircuitRegistry() {
     return shortCircuitRegistry;
+  }
+  
+  public WorkloadCollector getWorkloadCollector() {
+	  return workloadCollector;
+  }
+  
+  public boolean isTierEnabled() {
+	  return isTierEnabled;
   }
 }

@@ -37,10 +37,11 @@ public class WorkloadAnalyzer {
 					LOG.fatal("getting trace data");
 					Workload entry = traceQueue.take();
 					long timePoint = (int) ((entry.getTimestamp() - initTime) / 1000);
+					String fileName = context.namenode.getFilePath(entry.getBlock().getLocalBlock());
 					String jobName = parseJobName(entry);
 					String taskType = parseTaskType(entry);
-					String record = String.format("%6s, %s, %4s, %s, %12s, %6s, %10s, %12s, %8s", timePoint, entry.getStorageUuid(), entry.getStorageType(), entry.getBlock().getBlockName(),
-							entry.getElapsedTime(), entry.getOffset(), entry.getLength(), jobName, taskType);
+					String record = String.format("%6s, %s, %s, %4s, %s, %12s, %4s, %6s, %10s, %12s, %8s, %s", timePoint, entry.getDatanodeUuid(), entry.getStorageUuid(), entry.getStorageType(), entry.getBlock().getBlockName(),
+							entry.getType(), entry.getElapsedTime(), entry.getOffset(), entry.getLength(), jobName, taskType, fileName);
 					trace.write(record);
 					trace.newLine();
 					trace.flush();
@@ -68,6 +69,7 @@ public class WorkloadAnalyzer {
 		for (Workload workload : workloads) {
 			int originalAccessCount = getAccessCount(record, workload.getBlock().getLocalBlock());
 			record.put(workload.getBlock().getLocalBlock(), originalAccessCount + 1);
+			LOG.fatal("add one workload record from node " + node.getHostName());
 			traceQueue.add(workload);
 		}
 	}

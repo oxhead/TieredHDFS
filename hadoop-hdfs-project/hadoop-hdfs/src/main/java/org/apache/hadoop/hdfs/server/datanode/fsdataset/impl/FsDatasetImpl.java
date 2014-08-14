@@ -228,6 +228,13 @@ class FsDatasetImpl implements FsDatasetSpi<FsVolumeImpl> {
             DFSConfigKeys.DFS_DATANODE_FSDATASET_VOLUME_CHOOSING_POLICY_KEY,
             RoundRobinVolumeChoosingPolicy.class,
             VolumeChoosingPolicy.class), conf);
+    if (datanode.isTierEnabled()) {
+    	LOG.fatal("tier is enabled");
+        if (blockChooserImpl instanceof AdvancedVolumeChoosingPolicy) {
+        	LOG.fatal("policy is advanced");
+    	    ((AdvancedVolumeChoosingPolicy<FsVolumeImpl>)blockChooserImpl).setWorkloadCollecgtor(datanode.getWorkloadCollector());
+        }
+    }
     volumes = new FsVolumeList(volArray, volsFailed, blockChooserImpl);
     volumes.initializeReplicaMaps(volumeMap);
 

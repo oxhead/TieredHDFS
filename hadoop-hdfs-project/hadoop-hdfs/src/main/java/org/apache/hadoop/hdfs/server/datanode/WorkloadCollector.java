@@ -1,18 +1,19 @@
 package org.apache.hadoop.hdfs.server.datanode;
 
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -26,77 +27,213 @@ public class WorkloadCollector {
 
 	private boolean enable = false;
 
-	private LinkedList<Workload> accessRecrods = new LinkedList<Workload>();
-	private Lock lock = new ReentrantLock();
-	
-	private long initTime;
-	private WorkloadCollection[] workloadRecord = new WorkloadCollection[86400];
+	private List<Workload> accessRecrods = Collections.synchronizedList(new LinkedList<Workload>());
+	private Map<String, StorageStatistics> statistics = new HashMap<String, StorageStatistics>();
 
-	private BufferedWriter write;
-	private LinkedBlockingDeque<WorkloadDetail> queue = new LinkedBlockingDeque<WorkloadDetail>();
-	private Thread worker = new Thread() {
+	private AtomicInteger clock = new AtomicInteger();
+	private ScheduledExecutorService service = Executors.newScheduledThreadPool(1);
 
-		@Override
-		public void run() {
-			try {
-				while (true) {
-					WorkloadDetail entry = queue.take();
-					int timePoint = (int) ((entry.getTimestamp() - initTime) / 1000);
-					if (workloadRecord[timePoint] == null) {
-						workloadRecord[timePoint] = new WorkloadCollection();
-					}
-					workloadRecord[timePoint].addWorkload(entry);
-					String record = String.format("%6s, %s, %4s, %s, %12s, %6s, %6s", timePoint, entry.getStorageID(), entry.getStorageType(), entry.getBlock().getBlockName(), entry.getElapsedTime(),
-							entry.getOffset(), entry.getLength());
-					write.write(record);
-					write.newLine();
-					write.flush();
-				}
-			} catch (Exception e) {
-				LOG.fatal("[Collector] processing failed", e);
+	BufferedWriter writer;
+
+	class StorageStatistics {
+
+		String storageId;
+		int currentIndex = 0;
+		int samplePeriod;
+
+		long[] readBytes;
+		long[] readTime;
+		long[] writeBytes;
+		long[] writeTime;
+
+		double[] aggregateReadThroughputs;
+		double[] aggregateWriteThroughputs;
+
+		public StorageStatistics(String storageId) {
+			this(storageId, 15);
+		}
+
+		public StorageStatistics(String storageId, int samplePeriod) {
+			this.storageId = storageId;
+			this.samplePeriod = samplePeriod;
+			readBytes = new long[samplePeriod];
+			readTime = new long[samplePeriod];
+			writeBytes = new long[samplePeriod];
+			writeTime = new long[samplePeriod];
+			aggregateReadThroughputs = new double[samplePeriod];
+			aggregateWriteThroughputs = new double[samplePeriod];
+
+			for (int i = 0; i < samplePeriod; i++) {
+				readBytes[i] = 0L;
+				readTime[i] = 0L;
+				writeBytes[i] = 0L;
+				writeTime[i] = 0L;
+				aggregateReadThroughputs[i] = 0.0;
+				aggregateWriteThroughputs[i] = 0.0;
 			}
 		}
-	};
 
-	public void reportReadOperation(String datanodeUUID, String storageUuid, StorageType storageType, ExtendedBlock block, long offset, long length, String clientName, String remoteAddress,
+		public synchronized void addReadRecord(long bytes, long time) {
+			readBytes[currentIndex] += bytes;
+			readTime[currentIndex] += time;
+		}
+
+		public synchronized void addWriteRecord(long bytes, long time) {
+			writeBytes[currentIndex] += bytes;
+			writeTime[currentIndex] += time;
+		}
+
+		public double getReadThroughput() {
+			return aggregateReadThroughputs[currentIndex];
+		}
+
+		public double getWriteThroughput() {
+			return aggregateWriteThroughputs[currentIndex];
+		}
+
+		public double getAggregateReadThroughput() {
+			double total = 0;
+			for (double throughput : aggregateReadThroughputs) {
+				total += throughput;
+			}
+			return total;
+		}
+
+		public double getAggregateWriteThroughput() {
+			double total = 0;
+			for (double throughput : aggregateWriteThroughputs) {
+				total += throughput;
+			}
+			return total;
+		}
+
+		public boolean isReadPerformanceDowngrade() {
+			int previousIndex = (currentIndex - 1 + samplePeriod ) % samplePeriod;
+			if (aggregateReadThroughputs[currentIndex] >= aggregateReadThroughputs[previousIndex]) {
+				return false;
+			} else {
+				return aggregateReadThroughputs[currentIndex] < aggregateReadThroughputs[currentIndex] * 0.9;
+			}
+		}
+
+		public void calculate() {
+			aggregateReadThroughputs[currentIndex] = readBytes[currentIndex] == 0 ? 0 : (readBytes[currentIndex] / 1048576.0) / (readTime[currentIndex] / 1000000000.0);
+			aggregateWriteThroughputs[currentIndex] = writeBytes[currentIndex] == 0 ? 0 : (writeBytes[currentIndex] / 1048576.0) / (writeTime[currentIndex] / 1000000000.0);
+		}
+
+
+		private synchronized void reset() {
+			readBytes[currentIndex] = 0;
+			readTime[currentIndex] = 0;
+			writeBytes[currentIndex] = 0;
+			writeTime[currentIndex] = 0;
+			aggregateReadThroughputs[currentIndex] = 0.0;
+			aggregateWriteThroughputs[currentIndex] = 0.0;
+		}
+
+		public void step(int clock) {
+			currentIndex = clock;
+			reset();
+		}
+
+		public void printInfo() {
+			writeWorkload(String.format("storage=%s, type=%s, readThroughput=%s(%s), writeThroughput=%s(%s)", this.storageId, this.getReadThroughput(), this.getAggregateReadThroughput(), this.getWriteThroughput(), this.getAggregateWriteThroughput()));
+		}
+
+	}
+
+	public int getClock() {
+		return clock.get();
+	}
+
+	public boolean isPerformanceDowngrade(String storageUuid) {
+		StorageStatistics s = getStorageStatistics(storageUuid);
+		return s.isReadPerformanceDowngrade();
+	}
+
+	public double getAverageReadThroughput(String storageUuid) {
+		StorageStatistics s = getStorageStatistics(storageUuid);
+		return s.getReadThroughput();
+	}
+
+	public double getAverageWriteThroughput(String storageUuid) {
+		StorageStatistics s = getStorageStatistics(storageUuid);
+		return s.getWriteThroughput();
+	}
+	
+	public double geAggregateReadThroughput(String storageUuid) {
+		StorageStatistics s = getStorageStatistics(storageUuid);
+		return s.getAggregateReadThroughput();
+	}
+
+	public double geAggregateWriteThroughput(String storageUuid) {
+		StorageStatistics s = getStorageStatistics(storageUuid);
+		return s.getAggregateWriteThroughput();
+	}
+
+	public StorageStatistics getStorageStatistics(String storageUuid) {
+		if (!statistics.containsKey(storageUuid)) {
+			statistics.put(storageUuid, new StorageStatistics(storageUuid));
+		}
+		return statistics.get(storageUuid);
+	}
+
+	public void reportReadOperation(String datanodeUuid, String storageUuid, StorageType storageType, ExtendedBlock block, long offset, long length, String clientName, String remoteAddress,
 			long timestamp, long elapsedTime) {
 		if (enable) {
-			Workload record = new Workload(block, storageUuid, storageType, timestamp, elapsedTime, offset, length, clientName);
-			lock.lock();
+			Workload record = new Workload(Workload.Type.READ, datanodeUuid, block, storageUuid, storageType, timestamp, elapsedTime, offset, length, clientName);
 			accessRecrods.add(record);
-			lock.unlock();
-			WorkloadDetail entry = new WorkloadDetail(timestamp, elapsedTime, offset, length, block, datanodeUUID, storageUuid, storageType.toString());
-			queue.add(entry);
+			getStorageStatistics(storageUuid).addReadRecord(length, elapsedTime);
 		}
 	}
 
-	public void reportWriteOperation(String datanodeUUID, String storageUuid, StorageType storageType, ExtendedBlock block, long offset, long length, String clientName, String remoteAddress,
+	public void reportWriteOperation(String datanodeUuid, String storageUuid, StorageType storageType, ExtendedBlock block, long offset, long length, String clientName, String remoteAddress,
 			long timestamp, long elapsedTime) {
 		if (enable) {
-			Workload record = new Workload(block, storageUuid, storageType, timestamp, elapsedTime, offset, length, clientName);
-			lock.lock();
+			Workload record = new Workload(Workload.Type.WRITE, datanodeUuid, block, storageUuid, storageType, timestamp, elapsedTime, offset, length, clientName);
 			accessRecrods.add(record);
-			lock.unlock();
-			WorkloadDetail entry = new WorkloadDetail(timestamp, elapsedTime, offset, length, block, datanodeUUID, storageUuid, storageType.toString());
-			queue.add(entry);
+			getStorageStatistics(storageUuid).addWriteRecord(length, elapsedTime);
+		}
+	}
+
+	public void writeWorkload(String s) {
+		try {
+			writer.write(s);
+			writer.newLine();
+			writer.flush();
+		} catch (IOException e) {
+			LOG.fatal("cannot write workload to file: " + s, e);
 		}
 	}
 
 	public void initialize() throws IOException {
 		enable();
-		initTime = System.currentTimeMillis();
-		File traceFile = File.createTempFile("workload_", ".trace", new File("/tmp"));
-		write = new BufferedWriter(new FileWriter(traceFile));
-		LOG.fatal("[Collector] trace file=" + traceFile);
-		worker.start();
+		writer = new BufferedWriter(new FileWriter("/tmp/workload.log"));
+		service.scheduleAtFixedRate(new Runnable() {
+
+			@Override
+			public void run() {
+
+				for (Map.Entry<String, StorageStatistics> entry : statistics.entrySet()) {
+					StorageStatistics s = entry.getValue();
+					s.calculate();
+					s.printInfo();
+				}
+
+				clock.set(clock.incrementAndGet() % 15);
+				for (Map.Entry<String, StorageStatistics> entry : statistics.entrySet()) {
+					StorageStatistics s = entry.getValue();
+					s.step(clock.get());
+				}
+			}
+		}, 0, 1, TimeUnit.SECONDS);
 	}
 
 	public List<Workload> pollWorkloads() {
 		List<Workload> workloads = new ArrayList<Workload>(accessRecrods.size());
-		Workload workload = null;
-		while ((workload = accessRecrods.poll()) != null) {
-			workloads.add(workload);
-		}
+		workloads.addAll(accessRecrods);
+		accessRecrods.clear();
+		LOG.fatal("poll workload records: " + workloads.size());
 		return workloads;
 	}
 
@@ -106,72 +243,5 @@ public class WorkloadCollector {
 
 	public void disable() {
 		enable = false;
-	}
-}
-
-class WorkloadDetail {
-	private long timestamp;
-	private long elapsedTime;
-	private long offset;
-	private long length;
-	private ExtendedBlock block;
-	private String datanodeUUID;
-	private String storageID;
-	private String storageType;
-
-	public WorkloadDetail(long timestamp, long elapsedTime, long offset, long length, ExtendedBlock block, String datanodeUUID, String storageID, String storageType) {
-		this.timestamp = timestamp;
-		this.elapsedTime = elapsedTime;
-		this.offset = offset;
-		this.length = length;
-		this.block = block;
-		this.datanodeUUID = datanodeUUID;
-		this.storageID = storageID;
-		this.storageType = storageType;
-	}
-
-	public long getTimestamp() {
-		return timestamp;
-	}
-
-	public long getElapsedTime() {
-		return elapsedTime;
-	}
-
-	public long getOffset() {
-		return offset;
-	}
-
-	public long getLength() {
-		return length;
-	}
-
-	public ExtendedBlock getBlock() {
-		return block;
-	}
-
-	public String getDatanodeUUID() {
-		return datanodeUUID;
-	}
-
-	public String getStorageID() {
-		return storageID;
-	}
-
-	public String getStorageType() {
-		return storageType;
-	}
-
-}
-
-class WorkloadCollection {
-	private List<WorkloadDetail> list = new LinkedList<WorkloadDetail>();
-
-	public void addWorkload(WorkloadDetail entry) {
-		list.add(entry);
-	}
-
-	public List<WorkloadDetail> getWorkloads() {
-		return list;
 	}
 }

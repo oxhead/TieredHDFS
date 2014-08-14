@@ -7,6 +7,13 @@ import org.apache.hadoop.hdfs.StorageType;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class Workload {
+
+	public enum Type {
+		READ, WRITE;
+	}
+
+	private Type type;
+	private String datanodeUuid;
 	private ExtendedBlock block;
 	private String storageUuid;
 	private StorageType storageType;
@@ -16,7 +23,9 @@ public class Workload {
 	private long length;
 	private String clientName;
 
-	public Workload(ExtendedBlock block, String storageUuid, StorageType storageType, long timestamp, long elapsedTime, long offset, long length, String clientName) {
+	public Workload(Type type, String datanodeUuid, ExtendedBlock block, String storageUuid, StorageType storageType, long timestamp, long elapsedTime, long offset, long length, String clientName) {
+		this.type = type;
+		this.datanodeUuid = datanodeUuid;
 		this.block = block;
 		this.storageUuid = storageUuid;
 		this.storageType = storageType;
@@ -25,6 +34,14 @@ public class Workload {
 		this.offset = offset;
 		this.length = length;
 		this.clientName = clientName;
+	}
+
+	public Type getType() {
+		return type;
+	}
+
+	public String getDatanodeUuid() {
+		return datanodeUuid;
 	}
 
 	public ExtendedBlock getBlock() {

@@ -482,13 +482,21 @@ message RollingUpgradeStatusProto {
   required string blockPoolId = 1;
 }
 
+enum WorkloadTypeProto {
+  READ = 1;
+  WRITE = 2;
+}
+
 message WorkloadProto {
-	required ExtendedBlockProto block = 1;
-	required string storageUuid = 2;
-	required StorageTypeProto storageType = 3;
-	required uint64 timestamp = 4;
-	required uint64 elapsedTime = 5;
-	required uint64 offset = 6;
-	required uint64 length = 7;
-	required string clientName = 8;
+	required WorkloadTypeProto workloadType = 1;
+	required string datanodeUuid = 2;
+	required ExtendedBlockProto block = 3;
+	required string storageUuid = 4;
+	required StorageTypeProto storageType = 5;
+	required uint64 timestamp = 6;
+	required uint64 elapsedTime = 7;
+	required uint64 offset = 8;
+	required uint64 length = 9;
+	required string clientName = 10;
+
 }

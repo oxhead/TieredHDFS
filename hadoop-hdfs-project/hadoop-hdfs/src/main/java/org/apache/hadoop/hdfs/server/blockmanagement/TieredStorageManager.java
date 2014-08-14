@@ -197,6 +197,11 @@ class Context {
 		public void removeBlock(Block block) {
 			blockManager.removeBlock(block);
 		}
+		
+		public String getFilePath(Block block) {
+			BlockCollection c = blockManager.getBlockCollection(block);
+			return c != null ? c.getName() : null;
+		}
 	}
 
 	public class BlockConext {

@@ -225,7 +225,7 @@ public class HDFSWrite extends Configured implements Tool {
 
 		job.setInputFormat(RandomInputFormat.class);
 		job.setMapperClass(Map.class);
-		job.setReducerClass(IdentityReducer.class);
+		//job.setReducerClass(IdentityReducer.class);
 		job.setOutputFormat(SequenceFileOutputFormat.class);
 
 		JobClient client = new JobClient(job);
